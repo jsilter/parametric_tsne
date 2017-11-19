@@ -1,5 +1,5 @@
 This is a python package implementing parametric t-SNE. We train a neural-network to learn a mapping by minimizing the Kullback-Leibler divergence between the Gaussian distance metric in the high-dimensional space and the Students-t distributed distance metric in the low-dimensional space. By default we use similar archictecture as van der Maaten 2009, which is a dense neural network with layers: 
-<input dimension>, 500, 500, 2000, <output dimension>
+[input dimension], 500, 500, 2000, []output dimension]
 
 Note: van der Maaten 2009 used a ReLu as the output layer. Here I specified a linear output layer. The ReLu would occasionally produce poor results in the form of all zeroes in one dimension. 
 
@@ -41,4 +41,5 @@ L.J.P. van der Maaten and G.E. Hinton. Visualizing High-Dimensional Data Using t
 
 MATLAB Parametric tSNE implementation: https://lvdmaaten.github.io/tsne/code/ptsne.tar.gz
 Available at https://lvdmaaten.github.io/tsne/
+
 Mirrored at https://github.com/jsilter/lvdmaaten.github.io/tree/master/tsne/code
