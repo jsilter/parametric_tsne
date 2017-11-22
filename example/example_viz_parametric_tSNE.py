@@ -136,7 +136,7 @@ if __name__ == "__main__":
         for lh in leg.legendHandles: 
             lh._legmarker.set_alpha(1.0)
 
-        plt.title('%s Transform with %s clusters' % (tag, num_clusters))
+        plt.title('{tag} Transform with {num_clusters:d} clusters'.format(tag=tag, num_clusters=num_clusters))
 
-        plt.savefig('example_viz_%s.png' % tag)
+        plt.savefig('example_viz_{tag}.png'.format(tag=tag))
     plt.show()

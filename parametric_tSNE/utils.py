@@ -192,7 +192,7 @@ def _calc_betas_vec(indata, perplexity, tol=1e-4, max_tries=50):
 
         # At any given iteration we are only operating on a subset of indices
         use_locs = np.where(np.abs(overall_Hdiff) > tol)[0]
-        #print('%d: Number locations still working: %2d' % (tries, len(use_locs)))
+
         if len(use_locs) == 0:
             break
         
