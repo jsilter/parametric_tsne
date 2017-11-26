@@ -8,7 +8,7 @@ The training data is plotted as contours, the test data as individual points.
 
 ![PCA](example_viz_PCA.png "PCA")
 
-##Requirements
+## Requirements
 matplotlib  
 seaborn  
 scikit-learn (PCA only)

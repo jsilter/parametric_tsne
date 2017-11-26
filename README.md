@@ -1,7 +1,6 @@
-This is a python package implementing parametric t-SNE. We train a neural-network to learn a mapping by minimizing the Kullback-Leibler divergence between the Gaussian distance metric in the high-dimensional space and the Students-t distributed distance metric in the low-dimensional space. By default we use similar archictecture as van der Maaten 2009, which is a dense neural network with layers: 
-[input dimension], 500, 500, 2000, []output dimension]
-
-Note: van der Maaten 2009 used a ReLu as the output layer. Here I specified a linear output layer. The ReLu would occasionally produce poor results in the form of all zeroes in one dimension. 
+# Overview
+This is a python package implementing parametric t-SNE. We train a neural-network to learn a mapping by minimizing the Kullback-Leibler divergence between the Gaussian distance metric in the high-dimensional space and the Students-t distributed distance metric in the low-dimensional space. By default we use similar archictecture<sup>1</sup> as van der Maaten 2009, which is a dense neural network with layers: 
+[input dimension], 500, 500, 2000, [output dimension]
 
 Simple example usage may be:
 
@@ -22,6 +21,8 @@ test_data = load_test_data_somehow()
 test_res = ptSNE.transform(test_data)
 ```
 
+See [the example script](./example/example_viz_parametric_tSNE.py) (and its corresponding [readme](./example/README.md)) for more information.
+
 If one wants to use a different network architecture, one must specify the layers.
 The neural network is implemented using Keras and Tensorflow, so layers should be specified using Keras:
 
@@ -33,7 +34,11 @@ layers.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform'
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity, all_layers=all_layers)
 ```
 
-#References
+# Footnotes
+
+1. van der Maaten 2009 used a ReLu as the output layer. The default here is a linear output layer. ReLu would occasionally produce poor results in the form of all zeroes in one dimension. 
+
+# References
 
 van der Maaten, L. (2009). Learning a parametric embedding by preserving local structure. RBM, 500(500), 26.
 
