@@ -249,6 +249,7 @@ class Parametric_tSNE(object):
         self._loss_func = None
         
         tf.set_random_seed(seed)
+        np.random.seed(seed)
         
         # If no layers provided, use the same architecture as van der maaten 2009 paper
         if all_layers is None:
