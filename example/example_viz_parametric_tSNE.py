@@ -35,7 +35,7 @@ except Exception as ex:
 
 def _gen_test_data(num_clusters, num_samps):
     cluster_centers = 5.0*np.identity(num_clusters)
-    perm_vec = np.array([x % num_clusters for x in xrange(1, num_clusters+1)])
+    perm_vec = np.array([x % num_clusters for x in range(1, num_clusters+1)])
     cluster_centers += cluster_centers[perm_vec, :]
     pick_rows = np.arange(0, num_samps) % num_clusters
     
@@ -47,7 +47,7 @@ def _gen_test_data(num_clusters, num_samps):
 
 def _plot_scatter(output_res, pick_rows, color_palette, alpha=0.5, symbol='o'):
     num_clusters = len(set(pick_rows))
-    for ci in xrange(num_clusters):
+    for ci in range(num_clusters):
         cur_plot_rows = pick_rows == ci
         cur_color = color_palette[ci]
         plt.plot(output_res[cur_plot_rows, 0], output_res[cur_plot_rows, 1], symbol, 
@@ -56,7 +56,7 @@ def _plot_scatter(output_res, pick_rows, color_palette, alpha=0.5, symbol='o'):
 
 def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
     num_clusters = len(set(pick_rows))
-    for ci in xrange(num_clusters):
+    for ci in range(num_clusters):
         cur_plot_rows = pick_rows == ci
         cur_cmap = sns.light_palette(color_palette[ci], as_cmap=True)
         sns.kdeplot(output_res[cur_plot_rows, 0], output_res[cur_plot_rows, 1], cmap=cur_cmap, shade=True, alpha=alpha,

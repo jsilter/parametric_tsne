@@ -21,8 +21,8 @@ import tensorflow as tf
 from tensorflow.contrib.keras import models
 from tensorflow.contrib.keras import layers
 
-from utils import calc_betas_loop
-from utils import get_squared_cross_diff_np
+from .utils import calc_betas_loop
+from .utils import get_squared_cross_diff_np
 
 DEFAULT_EPS = 1e-7
 

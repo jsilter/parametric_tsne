@@ -131,7 +131,7 @@ def calc_betas_loop(indata, perplexity, tol=1e-4, max_tries=50):
     
     in_sq_diffs = get_squared_cross_diff_np(indata)
 
-    loop_samps = xrange(num_samps)
+    loop_samps = range(num_samps)
     for ss in loop_samps:
         betamin = -np.inf
         betamax = np.inf
