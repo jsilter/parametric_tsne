@@ -33,16 +33,16 @@ def _make_P_ji(input, betas, in_sq_diffs=None):
     ----------
     input : 2d array_like, (N, D)
         Input data which we wish to calculate similarity probabilities
-    betas : 1d array_like, (N,)
+    betas : 1d array_like, (N, P)
         Gaussian kernel used for each point.
     Returns
     -------
-    P_ji : 2d array_like, (N,N)
+    P_ji : 2d array_like, (N,N,P)
         Similarity probability matrix
     """
     if not in_sq_diffs:
         in_sq_diffs = get_squared_cross_diff_np(input)
-    tmp = in_sq_diffs * betas
+    tmp = in_sq_diffs[:,:,np.newaxis] * betas[np.newaxis,:,:]
     P_ji = np.exp(-1.0*tmp)
     return P_ji
 
@@ -54,15 +54,19 @@ def _make_P_np(input, betas):
     ----------
     input : 2d array_like, (N, D)
         Input data which we wish to calculate similarity probabilities
-    betas : 1d array_like, (N,)
-        Gaussian kernel used for each point.
+    betas : 2d array_like, (N,P)
+        Gaussian kernel(s) used for each point.
     Returns
     -------
-    P : 2d array_like, (N,N)
+    P : nd array_like, (N,N)
         Symmetric similarity probability matrix
+        Average across beta values
     """
     P_ji = _make_P_ji(input, betas)
-    P_ = _get_normed_sym_np(P_ji)
+    P_3 = np.zeros_like(P_ji)
+    for zz in range(P_3.shape[2]):
+        P_3[:, :, zz] = _get_normed_sym_np(P_ji[:, :, zz])
+    P_ = P_3.mean(axis=2, keepdims=False)
     return P_
     
     
@@ -221,8 +225,10 @@ class Parametric_tSNE(object):
             Dimension of the (high-dimensional) input
         num_outputs : int
             Dimension of the (low-dimensional) output
-        perplexity: int
-            Desired perplexity. See literature on tSNE for details.
+        perplexity:
+            Desired perplexit(y/ies). Generally interpreted as the number of neighbors to use
+            for distance comparisons but actually doesn't need to be an integer.
+            Can be an array for multi-scale.
         Roughly speaking, this is the number of points which should be considered
         when calculating distances between points. Can be None if one provides own training betas.
         alpha: float
@@ -269,15 +275,16 @@ class Parametric_tSNE(object):
         """ Initialize loss function and Keras model"""
         self._init_loss_func()
         self.model = models.Sequential(self._all_layers)
-        
-    def _calc_training_betas(self, training_data, perplexity, beta_batch_size=1000):
+
+    @staticmethod
+    def _calc_training_betas(training_data, perplexities, beta_batch_size=1000):
         """
         Calculate beta values (gaussian kernel widths) used for training the model
-        For memory reasons, only uses
+        For memory reasons, only uses beta_batch_size points at a time.
         Parameters
         ----------
         training_data : 2d array_like, (N, D)
-        perplexity : float
+        perplexities : float or ndarray-like, (P,)
         beta_batch_size : int, optional
             Only use `beta_batch_size` points to calculate beta values. This is
             for speed and memory reasons. Data must be well-shuffled for this to be effective,
@@ -286,20 +293,24 @@ class Parametric_tSNE(object):
             # batches
         Returns
         -------
-        betas : 1d array_like (N,)
+        betas : 2D array_like (N,P)
         """
-        assert perplexity is not None, "Must provide a desired perplexity if training bata values"
+        assert perplexities is not None, "Must provide desired perplexit(y/ies) if training bata values"
         num_pts = len(training_data)
-        training_betas = np.zeros(num_pts)
+        if not isinstance(perplexities, (list, tuple, np.ndarray)):
+            perplexities = np.array([perplexities])
+        num_perplexities = len(perplexities)
+        training_betas = np.zeros([num_pts, num_perplexities])
 
         # To calculate betas, only use `beta_batch_size` points at a time
         cur_start = 0
         cur_end = min(cur_start+beta_batch_size, num_pts)
         while cur_start < num_pts:
             cur_training_data = training_data[cur_start:cur_end, :]
-            
-            cur_training_betas, cur_P, cur_Hs = calc_betas_loop(cur_training_data, perplexity)
-            training_betas[cur_start:cur_end] = cur_training_betas
+
+            for pind, curperp in enumerate(perplexities):
+                cur_training_betas, cur_P, cur_Hs = calc_betas_loop(cur_training_data, curperp)
+                training_betas[cur_start:cur_end, pind] = cur_training_betas
             
             cur_start += beta_batch_size
             cur_end = min(cur_start+beta_batch_size, num_pts)
@@ -358,8 +369,8 @@ class Parametric_tSNE(object):
         ----------
         training_data : 2d array_like (N, D)
             Data on which to train the tSNE model
-        training_betas : 1d array_like (N,), optional
-            Widths for gaussian kernel. If `None` (the usual case), they will be calculated based on
+        training_betas : 2d array_like (N,P), optional
+            Widths for gaussian kernels. If `None` (the usual case), they will be calculated based on
             `training_data` and self.perplexity. One can also provide them here explicitly.
         epochs: int, optional
         verbose: int, optional
@@ -418,14 +429,14 @@ class Parametric_tSNE(object):
         Parameters
         ----------
         training_data : 2d array_like (N, D)
-        betas : 1d array_like (N,)
+        betas : 2d array_like (N,P)
         batch_size: int
 
         Returns
         -------
         cur_dat : 2d array_like (batch_size, D)
             Slice of `training_data`
-        P_array : 2d array_like (batch_size, batch_size)
+        P_array : 3d array_like (batch_size, batch_size)
             Probability matrix between points
             This is what we use as our "true" value in the KL loss function
         """
@@ -434,8 +445,8 @@ class Parametric_tSNE(object):
         while True:
             cur_step = (cur_step + 1) % num_steps
             cur_bounds = batch_size*cur_step, batch_size*(cur_step+1)
-            cur_dat = training_data[cur_bounds[0]:cur_bounds[1],:]
-            cur_betas = betas[cur_bounds[0]:cur_bounds[1]]
+            cur_dat = training_data[cur_bounds[0]:cur_bounds[1], :]
+            cur_betas = betas[cur_bounds[0]:cur_bounds[1], :]
             
             P_array = _make_P_np(cur_dat, cur_betas)
             

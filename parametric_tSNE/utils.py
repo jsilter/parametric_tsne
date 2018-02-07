@@ -94,6 +94,19 @@ def get_squared_cross_diff_np(X_):
     return sum_act
 
 
+def get_Lmax(num_points):
+    return np.floor(np.log2(num_points/4.0))
+
+
+def get_multiscale_perplexities(num_points):
+    """From
+    Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction"""
+    Lmax = get_Lmax(num_points)
+    _L_vals = np.arange(2, Lmax)
+    perplexities = 2.0**(_L_vals)
+    return perplexities
+
+
 def calc_betas_loop(indata, perplexity, tol=1e-4, max_tries=50):
     """
     Calculate beta values for a desired perplexity via binary search
