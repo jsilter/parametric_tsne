@@ -2,6 +2,8 @@
 from __future__ import division  # Python 2 users only
 from __future__ import print_function
 
+from parametric_tSNE.utils import get_multiscale_perplexities
+
 __doc__= """ Example usage of parametric_tSNE. 
 Generate some simple data in high (14) dimension, train a model, 
 and run additional generated data through the trained model"""
@@ -66,7 +68,7 @@ def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
 if __name__ == "__main__":
     # Parametric tSNE example
     num_clusters = 14
-    model_path = 'example_viz_tSNE.h5'
+    model_path_template = 'example_viz_{model_tag}.h5'
     override = False
     
     num_samps = 2000
@@ -75,10 +77,11 @@ if __name__ == "__main__":
     batches_per_epoch = 8
     batch_size = 128
     plot_pca = has_sklearn
+    color_palette = sns.color_palette("hls", num_clusters)
     
     debug = False
     if debug:
-        model_path = 'example_viz_tSNE_debug.h5'
+        model_label = 'debug'
         num_samps = 400
         do_pretrain = False
         epochs = 5
@@ -94,32 +97,39 @@ if __name__ == "__main__":
     # Generate "test" data
     np.random.seed(86131894)
     test_data, test_pick_rows = _gen_test_data(num_clusters, num_samps)
+
+    transformer_list = [{'label': 'tSNE (Fixed Perp.)', 'tag': 'tSNE_perp30', 'perplexity': 30, 'transformer': None},
+                        {'label': 'Multiscale tSNE', 'tag': 'tSNE_multiscale', 'perplexity': None, 'transformer': None}]
     
-    perplexity = 30
+    for tlist in transformer_list:
+        perplexity = tlist['perplexity']
+        if perplexity is None:
+            perplexity = get_multiscale_perplexities(num_samps)
     
-    ptSNE = Parametric_tSNE(train_data.shape[1], num_outputs, perplexity,
+        ptSNE = Parametric_tSNE(train_data.shape[1], num_outputs, perplexity,
                             alpha=alpha_, do_pretrain=do_pretrain, batch_size=batch_size,
                             seed=54321)
+
+        model_path = model_path_template.format(model_tag=tlist['tag'])
     
-    if override or not os.path.exists(model_path):
-        ptSNE.fit(train_data, epochs=epochs, verbose=1)
-        print('{time}: Saving model {model_path}'.format(time=datetime.datetime.now(), model_path=model_path))
-        ptSNE.save_model(model_path)
-    else:
-        print('{time}: Loading from {model_path}'.format(time=datetime.datetime.now(), model_path=model_path))
-        ptSNE.restore_model(model_path)
+        if override or not os.path.exists(model_path):
+            ptSNE.fit(train_data, epochs=epochs, verbose=1)
+            print('{time}: Saving model {model_path}'.format(time=datetime.datetime.now(), model_path=model_path))
+            ptSNE.save_model(model_path)
+        else:
+            print('{time}: Loading from {model_path}'.format(time=datetime.datetime.now(), model_path=model_path))
+            ptSNE.restore_model(model_path)
     
-    color_palette = sns.color_palette("hls", num_clusters)
-    
-    transformer_list = [{'tag': 'tSNE', 'transformer': ptSNE}]
+
     if plot_pca:
         pca_transformer = PCA(n_components=2)
         pca_transformer.fit(train_data)
-        transformer_list.append({'tag': 'PCA', 'transformer': pca_transformer})
+        transformer_list.append({'label': 'PCA', 'tag': 'PCA', 'transformer': pca_transformer})
     
     for transformer_dict in transformer_list:
         transformer = transformer_dict['transformer']
         tag = transformer_dict['tag']
+        label = transformer_dict['label']
         
         output_res = transformer.transform(train_data)
         test_res = transformer.transform(test_data)
@@ -136,7 +146,7 @@ if __name__ == "__main__":
         for lh in leg.legendHandles: 
             lh._legmarker.set_alpha(1.0)
 
-        plt.title('{tag} Transform with {num_clusters:d} clusters'.format(tag=tag, num_clusters=num_clusters))
+        plt.title('{label} Transform with {num_clusters:d} clusters'.format(tag=tag, num_clusters=num_clusters))
 
         plt.savefig('example_viz_{tag}.png'.format(tag=tag))
     plt.show()
