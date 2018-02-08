@@ -2,8 +2,6 @@
 from __future__ import division  # Python 2 users only
 from __future__ import print_function
 
-from parametric_tSNE.utils import get_multiscale_perplexities
-
 __doc__= """ Example usage of parametric_tSNE. 
 Generate some simple data in high (14) dimension, train a model, 
 and run additional generated data through the trained model"""
@@ -24,6 +22,7 @@ _par_dir = os.path.abspath(os.path.join(_cur_dir, os.pardir))
 sys.path.append(_cur_dir)
 sys.path.append(_par_dir)
 from parametric_tSNE import Parametric_tSNE
+from parametric_tSNE.utils import get_multiscale_perplexities
 
 has_sklearn = False
 try:
@@ -36,13 +35,14 @@ except Exception as ex:
 
 
 def _gen_test_data(num_clusters, num_samps):
-    cluster_centers = 5.0*np.identity(num_clusters)
+    cluster_centers = 3.0*np.identity(num_clusters)
     perm_vec = np.array([x % num_clusters for x in range(1, num_clusters+1)])
     cluster_centers += cluster_centers[perm_vec, :]
+    
     pick_rows = np.arange(0, num_samps) % num_clusters
     
     test_data = cluster_centers[pick_rows, :]
-    test_data += np.random.normal(loc=0.0, scale=1.0, size=test_data.shape)
+    test_data += np.random.normal(loc=1.0, scale=1.0, size=test_data.shape)
     
     return test_data, pick_rows
 
@@ -63,6 +63,9 @@ def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
         cur_cmap = sns.light_palette(color_palette[ci], as_cmap=True)
         sns.kdeplot(output_res[cur_plot_rows, 0], output_res[cur_plot_rows, 1], cmap=cur_cmap, shade=True, alpha=alpha,
             shade_lowest=False)
+        centroid = output_res[cur_plot_rows, :].mean(axis=0)
+        plt.annotate('%s' % ci, xy=centroid, xycoords='data', alpha=0.5,
+                     horizontalalignment='center', verticalalignment='center')
     
 
 if __name__ == "__main__":
@@ -98,14 +101,16 @@ if __name__ == "__main__":
     np.random.seed(86131894)
     test_data, test_pick_rows = _gen_test_data(num_clusters, num_samps)
 
-    transformer_list = [{'label': 'tSNE (Fixed Perp.)', 'tag': 'tSNE_perp30', 'perplexity': 30, 'transformer': None},
-                        {'label': 'Multiscale tSNE', 'tag': 'tSNE_multiscale', 'perplexity': None, 'transformer': None}]
+    transformer_list = [{'label': 'Multiscale tSNE', 'tag': 'tSNE_multiscale', 'perplexity': None, 'transformer': None},
+                        {'label': 'tSNE (Perplexity=10)', 'tag': 'tSNE_perp10', 'perplexity': 10, 'transformer': None},
+                        {'label': 'tSNE (Perplexity=100)', 'tag': 'tSNE_perp100', 'perplexity': 100, 'transformer': None}]
     
     for tlist in transformer_list:
         perplexity = tlist['perplexity']
         if perplexity is None:
             perplexity = get_multiscale_perplexities(num_samps)
-    
+            print('Using multiple perplexities: %s' % (','.join(map(str, perplexity))))
+            
         ptSNE = Parametric_tSNE(train_data.shape[1], num_outputs, perplexity,
                             alpha=alpha_, do_pretrain=do_pretrain, batch_size=batch_size,
                             seed=54321)
@@ -119,6 +124,8 @@ if __name__ == "__main__":
         else:
             print('{time}: Loading from {model_path}'.format(time=datetime.datetime.now(), model_path=model_path))
             ptSNE.restore_model(model_path)
+
+        tlist['transformer'] = ptSNE
     
 
     if plot_pca:
@@ -146,7 +153,7 @@ if __name__ == "__main__":
         for lh in leg.legendHandles: 
             lh._legmarker.set_alpha(1.0)
 
-        plt.title('{label} Transform with {num_clusters:d} clusters'.format(tag=tag, num_clusters=num_clusters))
+        plt.title('{label} Transform with {num_clusters:d} clusters'.format(label=label, num_clusters=num_clusters))
 
         plt.savefig('example_viz_{tag}.png'.format(tag=tag))
     plt.show()

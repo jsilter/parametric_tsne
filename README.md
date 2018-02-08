@@ -1,5 +1,5 @@
 # Overview
-This is a python package implementing parametric t-SNE. We train a neural-network to learn a mapping by minimizing the Kullback-Leibler divergence between the Gaussian distance metric in the high-dimensional space and the Students-t distributed distance metric in the low-dimensional space. By default we use similar archictecture<sup>1</sup> as van der Maaten 2009, which is a dense neural network with layers: 
+This is a python package implementing parametric t-SNE. We train a neural-network to learn a mapping by minimizing the Kullback-Leibler divergence between the Gaussian distance metric in the high-dimensional space and the Students-t distributed distance metric in the low-dimensional space. By default we use similar archictecture<sup>1</sup> as van der Maaten 2009, which is a dense neural network with layers:
 [input dimension], 500, 500, 2000, [output dimension]
 
 Simple example usage may be:
@@ -7,14 +7,14 @@ Simple example usage may be:
 ```python
 train_data = load_training_data_somehow()
 high_dims = train_data.shape[1]
-num_outputs = 2 
+num_outputs = 2
 perplexity = 30
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity)
 output_res = ptSNE.transform(train_data)
 ```
 
-`output_res` will be `N x num_outputs`, the transformation of each point. 
-At thes point, `ptSNE` will be a trained model, so we can quickly transform other data:
+`output_res` will be `N x num_outputs`, the transformation of each point.
+At this point, `ptSNE` will be a trained model, so we can quickly transform other data:
 
 ```python
 test_data = load_test_data_somehow()
@@ -34,15 +34,19 @@ layers.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform'
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity, all_layers=all_layers)
 ```
 
+The "perplexity" parameter can also be a list (e.g. [10,20,30,50,100,200]), in which case the probability matrix for each perplexity value will be averaged together for the final metric. This is an ad-hoc method inspired by Verleysen et al 2014. Certain initialization and training steps will be linear in the number of perplexity values used, though it shouldn't affect the speed of the final trained model.
+
 # Footnotes
 
-1. van der Maaten 2009 used a ReLu as the output layer. The default here is a linear output layer. ReLu would occasionally produce poor results in the form of all zeroes in one dimension. 
+1. van der Maaten 2009 used a ReLu as the output layer. The default here is a linear output layer. ReLu would occasionally produce poor results in the form of all zeroes in one dimension.
 
 # References
 
 van der Maaten, L. (2009). Learning a parametric embedding by preserving local structure. RBM, 500(500), 26.
 
 L.J.P. van der Maaten and G.E. Hinton. Visualizing High-Dimensional Data Using t-SNE. Journal of Machine Learning Research 9(Nov):2579-2605, 2008
+
+John A. Lee, , Diego H. Peluffo-Ordonez, and Michel Verleysen. Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction. ESANN 2014 proceedings, European Symposium on Artificial Neural Networks, Computational Intelligence and Machine Learning. Bruges (Belgium), 23-25 April 2014, ISBN 978-287419095-7. https://pdfs.semanticscholar.org/1e4b/21aca0590d4572a99fa3df3edd453f2d8a5a.pdf
 
 MATLAB Parametric tSNE implementation: https://lvdmaaten.github.io/tsne/code/ptsne.tar.gz
 Available at https://lvdmaaten.github.io/tsne/
