@@ -82,13 +82,14 @@ if __name__ == "__main__":
     plot_pca = has_sklearn
     color_palette = sns.color_palette("hls", num_clusters)
     
-    debug = False
+    debug = True
     if debug:
         model_label = 'debug'
         num_samps = 400
         do_pretrain = False
         epochs = 5
         plot_pca = False
+        override = True
     
     num_outputs = 2
     

@@ -58,15 +58,16 @@ def _make_P_np(input, betas):
         Gaussian kernel(s) used for each point.
     Returns
     -------
-    P : nd array_like, (N,N)
+    P : nd array_like, (N, N, P)
         Symmetric similarity probability matrix
-        Average across beta values
+        Beta-values across third dimension
     """
     P_ji = _make_P_ji(input, betas)
     P_3 = np.zeros_like(P_ji)
     for zz in range(P_3.shape[2]):
         P_3[:, :, zz] = _get_normed_sym_np(P_ji[:, :, zz])
     P_ = P_3.mean(axis=2, keepdims=False)
+    #P_ = P_3
     return P_
     
     
@@ -185,16 +186,17 @@ def kl_loss(y_true, y_pred, alpha=1.0, batch_size=None, _eps=DEFAULT_EPS):
     between the "true" output and the "predicted" output
     Parameters
     ----------
-    y_true : 2d array_like (N,N)
+    y_true : 2d or 3d array_like (N, N, P)
         Should be the P matrix calculated from input data.
         Differences in input points using a Gaussian probability distribution
+        2d arrays imply P = 1
     y_pred : 2d array_like (N, output_dims)
         Output of the neural network. We will calculate
         the Q matrix based on this output
     alpha : float, optional
         Parameter used to calculate Q. Default 1.0
     batch_size : int, required
-        Number of samples per batch. P_.shape[0]
+        Number of samples per batch. y_true.shape[0]
     Returns
     -------
     kl_loss : tf.Tensor, scalar value
@@ -206,10 +208,17 @@ def kl_loss(y_true, y_pred, alpha=1.0, batch_size=None, _eps=DEFAULT_EPS):
     
     _tf_eps = tf.constant(_eps, dtype=P_.dtype)
     
-    kl_matr = tf.multiply(P_, tf.log(P_ + _tf_eps) - tf.log(Q_ + _tf_eps), name='kl_matr')
+    #kls_per_beta = []
+    #for zz in range(P_.shape[2]):
+        #cur_beta_P = P_[:,:, zz]
+    cur_beta_P = P_
+    kl_matr = tf.multiply(cur_beta_P, tf.log(cur_beta_P + _tf_eps) - tf.log(Q_ + _tf_eps), name='kl_matr')
     toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
     kl_matr_keep = tf.matrix_set_diag(kl_matr, toset)
-    kl_total_cost = tf.reduce_sum(kl_matr_keep)
+    kl_total_cost_cur_beta = tf.reduce_sum(kl_matr_keep)
+    #kls_per_beta.append(kl_total_cost_cur_beta)
+    #kl_total_cost = tf.add_n(kls_per_beta)
+    kl_total_cost = kl_total_cost_cur_beta
     
     return kl_total_cost
     
@@ -436,7 +445,7 @@ class Parametric_tSNE(object):
         -------
         cur_dat : 2d array_like (batch_size, D)
             Slice of `training_data`
-        P_array : 3d array_like (batch_size, batch_size)
+        P_array : 3d array_like (batch_size, batch_size, P)
             Probability matrix between points
             This is what we use as our "true" value in the KL loss function
         """
