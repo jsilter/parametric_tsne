@@ -304,7 +304,7 @@ class Parametric_tSNE(object):
         -------
         betas : 2D array_like (N,P)
         """
-        assert perplexities is not None, "Must provide desired perplexit(y/ies) if training bata values"
+        assert perplexities is not None, "Must provide desired perplexit(y/ies) if training beta values"
         num_pts = len(training_data)
         if not isinstance(perplexities, (list, tuple, np.ndarray)):
             perplexities = np.array([perplexities])
