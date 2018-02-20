@@ -109,7 +109,7 @@ if __name__ == "__main__":
     for tlist in transformer_list:
         perplexity = tlist['perplexity']
         if perplexity is None:
-            perplexity = get_multiscale_perplexities(num_samps)
+            perplexity = get_multiscale_perplexities(2*num_samps)
             print('Using multiple perplexities: %s' % (','.join(map(str, perplexity))))
             
         ptSNE = Parametric_tSNE(train_data.shape[1], num_outputs, perplexity,
