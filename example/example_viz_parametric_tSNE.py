@@ -35,14 +35,22 @@ except Exception as ex:
 
 
 def _gen_test_data(num_clusters, num_samps):
-    cluster_centers = 3.0*np.identity(num_clusters)
-    perm_vec = np.array([x % num_clusters for x in range(1, num_clusters+1)])
-    cluster_centers += cluster_centers[perm_vec, :]
+    # Make two sets of points, to have local and global distances
+    cluster_centers = np.zeros([num_clusters, num_clusters])
+    top_cluster_size = min([5, num_samps])
+    cluster_centers[0:top_cluster_size, 0:top_cluster_size] = 1.0
+    cluster_centers[top_cluster_size::, top_cluster_size::] = 1.0
+    cluster_centers[np.diag_indices(num_clusters)] *= -1
+    cluster_centers *= top_cluster_size
     
     pick_rows = np.arange(0, num_samps) % num_clusters
+    scales = 1.0 + 2*(np.array(pick_rows, dtype=float) / num_clusters)
     
     test_data = cluster_centers[pick_rows, :]
-    test_data += np.random.normal(loc=1.0, scale=1.0, size=test_data.shape)
+    
+    # Loop through so as to provide a difference variance for each cluster
+    for xx in range(num_samps):
+        test_data[xx, :] += np.random.normal(loc=1.0, scale=scales[xx], size=num_clusters)
     
     return test_data, pick_rows
 
@@ -72,9 +80,9 @@ if __name__ == "__main__":
     # Parametric tSNE example
     num_clusters = 14
     model_path_template = 'example_viz_{model_tag}.h5'
-    override = False
+    override = True
     
-    num_samps = 2000
+    num_samps = 1000
     do_pretrain = True
     epochs = 20
     batches_per_epoch = 8
@@ -104,7 +112,8 @@ if __name__ == "__main__":
 
     transformer_list = [{'label': 'Multiscale tSNE', 'tag': 'tSNE_multiscale', 'perplexity': None, 'transformer': None},
                         {'label': 'tSNE (Perplexity=10)', 'tag': 'tSNE_perp10', 'perplexity': 10, 'transformer': None},
-                        {'label': 'tSNE (Perplexity=100)', 'tag': 'tSNE_perp100', 'perplexity': 100, 'transformer': None}]
+                        {'label': 'tSNE (Perplexity=100)', 'tag': 'tSNE_perp100', 'perplexity': 100, 'transformer': None},
+                        {'label': 'tSNE (Perplexity=500)', 'tag': 'tSNE_perp500', 'perplexity': 500, 'transformer': None}]
     
     for tlist in transformer_list:
         perplexity = tlist['perplexity']
