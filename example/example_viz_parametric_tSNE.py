@@ -15,6 +15,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+from matplotlib.backends.backend_pdf import PdfPages
 
 cur_path = os.path.realpath(__file__)
 _cur_dir = os.path.dirname(cur_path)
@@ -115,8 +116,8 @@ def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
 if __name__ == "__main__":
     # Parametric tSNE example
     num_clusters = 14
-    model_path_template = 'example_viz_{model_tag}.h5'
-    figure_template = = 'example_viz_{test_data_tag}.pdf'
+    model_path_template = 'example_viz_{model_tag}_{test_data_tag}.h5'
+    figure_template = 'example_viz_{test_data_tag}.pdf'
     override = True
     
     num_samps = 1000
@@ -128,9 +129,9 @@ if __name__ == "__main__":
     color_palette = sns.color_palette("hls", num_clusters)
     test_data_tag = 'dense'
     
-    debug = False
+    debug = True
     if debug:
-        model_label = 'debug'
+        model_path_template = 'example_viz_debug_{model_tag}_{test_data_tag}.h5'
         num_samps = 400
         do_pretrain = False
         epochs = 5
@@ -146,7 +147,7 @@ if __name__ == "__main__":
     elif test_data_tag == 'concentric':
         _gen_test_data = _gen_concentric_hollow_spheres
     else:
-        raise ValueError('Unknown test data tag {test_data_tag}'.format(test_data_tag=test_data_tag)
+        raise ValueError('Unknown test data tag {test_data_tag}'.format(test_data_tag=test_data_tag))
     
     # Generate "training" data
     np.random.seed(12345)
@@ -170,7 +171,7 @@ if __name__ == "__main__":
                             alpha=alpha_, do_pretrain=do_pretrain, batch_size=batch_size,
                             seed=54321)
 
-        model_path = model_path_template.format(model_tag=tlist['tag'])
+        model_path = model_path_template.format(model_tag=tlist['tag'], test_data_tag=test_data_tag)
     
         if override or not os.path.exists(model_path):
             ptSNE.fit(train_data, epochs=epochs, verbose=1)
@@ -210,10 +211,10 @@ if __name__ == "__main__":
         for lh in leg.legendHandles: 
             lh._legmarker.set_alpha(1.0)
 
-        plt.title('{label} Transform with {num_clusters:d} clusters'.format(label=label, num_clusters=num_clusters))
+        plt.title('{label:s} Transform with {num_clusters:d} clusters\n{test_data_tag:s} Data'.format(label=label, num_clusters=num_clusters, test_data_tag=test_data_tag.capitalize()))
         
         if pdf_obj:
-            plt.savefig(pdf_obj)
+            plt.savefig(pdf_obj, format='pdf')
             
     if pdf_obj:
         pdf_obj.close()
