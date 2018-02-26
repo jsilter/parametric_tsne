@@ -32,9 +32,45 @@ except Exception as ex:
     print('Error trying to import sklearn, will not plot PCA')
     print(ex)
     pass
-
-
-def _gen_test_data(num_clusters, num_samps):
+    
+def _gen_concentric_hollow_spheres(num_clusters, num_samps):
+    cluster_centers = np.zeros([num_clusters, num_clusters])
+    cluster_assignments = np.arange(0, num_samps) % num_clusters
+    top_cluster_size = min([5, num_samps])
+    radii = np.arange(1, num_samps + 1, dtype=float)
+    # Make two sets, add more distance between some sets of spheres
+    radii[top_cluster_size::] *= 2.0
+    
+    cluster_radii = radii[cluster_assignments]
+    # Add a little noise to the radius
+    cluster_radii += np.random.normal(loc=0.0, scale=0.1, size=num_samps)
+    
+    #Apparently normally distributed points will be uniform
+    #across the surface of a sphere
+    init_points = np.random.normal(loc=0.0, scale=1.0, size=[num_samps, num_clusters])
+    # Regenerate any points too close to the origin
+    min_rad = 1e-3
+    init_radii = np.linalg.norm(init_points, axis=1)
+    bad_points = np.where(init_radii < min_rad)[0]
+    num_bad_points = len(bad_points)
+    while num_bad_points >= 1:
+        init_points[bad_points, :] = np.random.normal(loc=0.0, scale=1.0, 
+            size=[num_bad_points, num_clusters])
+        init_radii = np.linalg.norm(init_points, axis=1)
+        bad_points = np.where(init_radii < min_rad)[0]
+        num_bad_points = len(bad_points)
+    
+    init_points = init_points / init_radii[:, np.newaxis]
+    
+    final_points = init_points * cluster_radii[:, np.newaxis]
+    #final_radii = np.linalg.norm(final_points, axis=1)
+    
+    return final_points, cluster_assignments
+        
+    
+def _gen_dense_spheres(num_clusters, num_samps):
+    """ Generate `num_clusters` sets of dense spheres of points, in
+    `num_clusters` - dimensonal space. Total number of points = `num_samps`"""
     # Make two sets of points, to have local and global distances
     cluster_centers = np.zeros([num_clusters, num_clusters])
     top_cluster_size = min([5, num_samps])
@@ -80,6 +116,7 @@ if __name__ == "__main__":
     # Parametric tSNE example
     num_clusters = 14
     model_path_template = 'example_viz_{model_tag}.h5'
+    figure_template = = 'example_viz_{test_data_tag}.pdf'
     override = True
     
     num_samps = 1000
@@ -89,6 +126,7 @@ if __name__ == "__main__":
     batch_size = 128
     plot_pca = has_sklearn
     color_palette = sns.color_palette("hls", num_clusters)
+    test_data_tag = 'dense'
     
     debug = False
     if debug:
@@ -102,6 +140,13 @@ if __name__ == "__main__":
     num_outputs = 2
     
     alpha_ = num_outputs - 1.0
+    
+    if test_data_tag == 'dense':
+        _gen_test_data = _gen_dense_spheres
+    elif test_data_tag == 'concentric':
+        _gen_test_data = _gen_concentric_hollow_spheres
+    else:
+        raise ValueError('Unknown test data tag {test_data_tag}'.format(test_data_tag=test_data_tag)
     
     # Generate "training" data
     np.random.seed(12345)
@@ -142,6 +187,8 @@ if __name__ == "__main__":
         pca_transformer = PCA(n_components=2)
         pca_transformer.fit(train_data)
         transformer_list.append({'label': 'PCA', 'tag': 'PCA', 'transformer': pca_transformer})
+        
+    pdf_obj = PdfPages(figure_template.format(test_data_tag=test_data_tag))
     
     for transformer_dict in transformer_list:
         transformer = transformer_dict['transformer']
@@ -164,6 +211,11 @@ if __name__ == "__main__":
             lh._legmarker.set_alpha(1.0)
 
         plt.title('{label} Transform with {num_clusters:d} clusters'.format(label=label, num_clusters=num_clusters))
-
-        plt.savefig('example_viz_{tag}.png'.format(tag=tag))
-    plt.show()
+        
+        if pdf_obj:
+            plt.savefig(pdf_obj)
+            
+    if pdf_obj:
+        pdf_obj.close()
+    else:
+        plt.show()
