@@ -44,7 +44,7 @@ def _gen_concentric_hollow_spheres(num_clusters, num_samps):
     
     cluster_radii = radii[cluster_assignments]
     # Add a little noise to the radius
-    cluster_radii += np.random.normal(loc=0.0, scale=0.1, size=num_samps)
+    cluster_radii += np.random.normal(loc=0.0, scale=0.05, size=num_samps)
     
     #Apparently normally distributed points will be uniform
     #across the surface of a sphere
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     # Parametric tSNE example
     num_clusters = 14
     model_path_template = 'example_viz_{model_tag}_{test_data_tag}.h5'
-    figure_template = 'example_viz_{test_data_tag}.pdf'
+    figure_template = 'example_viz_tSNE_{test_data_tag}.pdf'
     override = True
     
     num_samps = 1000
@@ -127,11 +127,14 @@ if __name__ == "__main__":
     batch_size = 128
     plot_pca = has_sklearn
     color_palette = sns.color_palette("hls", num_clusters)
+    # 'concentric' doesn't cluster well, just all in a mush
+    #test_data_tag = 'concentric'
     test_data_tag = 'dense'
     
-    debug = True
+    debug = False
     if debug:
         model_path_template = 'example_viz_debug_{model_tag}_{test_data_tag}.h5'
+        figure_template = 'example_viz_debug_{test_data_tag}.pdf'
         num_samps = 400
         do_pretrain = False
         epochs = 5
