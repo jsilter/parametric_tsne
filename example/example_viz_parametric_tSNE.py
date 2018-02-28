@@ -34,18 +34,37 @@ except Exception as ex:
     print(ex)
     pass
     
-def _gen_concentric_hollow_spheres(num_clusters, num_samps):
+def _gen_cluster_centers(num_clusters, top_cluster_size):
+    # Make two sets of points, to have local and global distances
     cluster_centers = np.zeros([num_clusters, num_clusters])
-    cluster_assignments = np.arange(0, num_samps) % num_clusters
+    cluster_centers[0:top_cluster_size, 0:top_cluster_size] = 1.0
+    cluster_centers[top_cluster_size::, top_cluster_size::] = 1.0
+    cluster_centers[np.diag_indices(num_clusters)] *= -1
+    cluster_centers *= top_cluster_size
+    
+    return cluster_centers
+    
+def _gen_hollow_spheres(num_clusters, num_samps, num_rand_points=0):
     top_cluster_size = min([5, num_samps])
-    radii = np.arange(1, num_samps + 1, dtype=float)
-    # Make two sets, add more distance between some sets of spheres
-    radii[top_cluster_size::] *= 2.0
+    cluster_centers = _gen_cluster_centers(num_clusters, top_cluster_size)
+    cluster_assignments = np.arange(0, num_samps) % num_clusters
+    
+    per_samp_centers = cluster_centers[cluster_assignments, :]
+    
+    radii = 0.5*np.ones([num_clusters])
+    # Make two sets, have second set be larger spheres
+    radii[top_cluster_size::] = 1.5
     
     cluster_radii = radii[cluster_assignments]
     # Add a little noise to the radius
     cluster_radii += np.random.normal(loc=0.0, scale=0.05, size=num_samps)
     
+    # Add high variance to a subset of points, to simulate noise
+    for xx in range(num_rand_points):
+        rand_ind = np.random.randint(len(cluster_radii))
+        cluster_radii[rand_ind] = np.random.uniform(low=0.05, high=10.0)
+        per_samp_centers[rand_ind, :] += np.random.normal(loc=0.0, scale=10.0, size=cluster_centers.shape[1])
+        
     #Apparently normally distributed points will be uniform
     #across the surface of a sphere
     init_points = np.random.normal(loc=0.0, scale=1.0, size=[num_samps, num_clusters])
@@ -65,29 +84,33 @@ def _gen_concentric_hollow_spheres(num_clusters, num_samps):
     
     final_points = init_points * cluster_radii[:, np.newaxis]
     #final_radii = np.linalg.norm(final_points, axis=1)
+    # Center spheres on different points
+    final_points += per_samp_centers
     
     return final_points, cluster_assignments
         
     
-def _gen_dense_spheres(num_clusters, num_samps):
+def _gen_dense_spheres(num_clusters, num_samps, num_rand_points=0):
     """ Generate `num_clusters` sets of dense spheres of points, in
     `num_clusters` - dimensonal space. Total number of points = `num_samps`"""
     # Make two sets of points, to have local and global distances
-    cluster_centers = np.zeros([num_clusters, num_clusters])
     top_cluster_size = min([5, num_samps])
-    cluster_centers[0:top_cluster_size, 0:top_cluster_size] = 1.0
-    cluster_centers[top_cluster_size::, top_cluster_size::] = 1.0
-    cluster_centers[np.diag_indices(num_clusters)] *= -1
-    cluster_centers *= top_cluster_size
+    cluster_centers = _gen_cluster_centers(num_clusters, top_cluster_size)
     
     pick_rows = np.arange(0, num_samps) % num_clusters
     scales = 1.0 + 2*(np.array(pick_rows, dtype=float) / num_clusters)
     
     test_data = cluster_centers[pick_rows, :]
     
+    # Add high variance to a subset of points, to simulate points
+    # not belonging to any cluster 
+    for xx in range(num_rand_points):
+        rand_ind = np.random.randint(len(scales))
+        scales[rand_ind] = 10.0
+    
     # Loop through so as to provide a difference variance for each cluster
     for xx in range(num_samps):
-        test_data[xx, :] += np.random.normal(loc=1.0, scale=scales[xx], size=num_clusters)
+        test_data[xx, :] += np.random.normal(loc=0.0, scale=scales[xx], size=num_clusters)
     
     return test_data, pick_rows
 
@@ -127,9 +150,8 @@ if __name__ == "__main__":
     batch_size = 128
     plot_pca = has_sklearn
     color_palette = sns.color_palette("hls", num_clusters)
-    # 'concentric' doesn't cluster well, just all in a mush
-    #test_data_tag = 'concentric'
-    test_data_tag = 'dense'
+    test_data_tag = 'hollow'
+    #test_data_tag = 'dense'
     
     debug = False
     if debug:
@@ -140,6 +162,7 @@ if __name__ == "__main__":
         epochs = 5
         plot_pca = False
         override = True
+    num_rand_points = int(num_samps / num_clusters)
     
     num_outputs = 2
     
@@ -147,17 +170,17 @@ if __name__ == "__main__":
     
     if test_data_tag == 'dense':
         _gen_test_data = _gen_dense_spheres
-    elif test_data_tag == 'concentric':
-        _gen_test_data = _gen_concentric_hollow_spheres
+    elif test_data_tag == 'hollow':
+        _gen_test_data = _gen_hollow_spheres
     else:
         raise ValueError('Unknown test data tag {test_data_tag}'.format(test_data_tag=test_data_tag))
     
     # Generate "training" data
     np.random.seed(12345)
-    train_data, pick_rows = _gen_test_data(num_clusters, num_samps)
+    train_data, pick_rows = _gen_test_data(num_clusters, num_samps, num_rand_points)
     # Generate "test" data
     np.random.seed(86131894)
-    test_data, test_pick_rows = _gen_test_data(num_clusters, num_samps)
+    test_data, test_pick_rows = _gen_test_data(num_clusters, num_samps, num_rand_points)
 
     transformer_list = [{'label': 'Multiscale tSNE', 'tag': 'tSNE_multiscale', 'perplexity': None, 'transformer': None},
                         {'label': 'tSNE (Perplexity=10)', 'tag': 'tSNE_perp10', 'perplexity': 10, 'transformer': None},
