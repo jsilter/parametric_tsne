@@ -260,10 +260,12 @@ class Parametric_tSNE(object):
         """
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
-        if not isinstance(perplexities, (list, tuple, np.ndarray)):
+        if perplexities is not None and not isinstance(perplexities, (list, tuple, np.ndarray)):
             perplexities = np.array([perplexities])
         self.perplexities = perplexities
-        self.num_perplexities = len(np.array(perplexities))
+        self.num_perplexities = None
+        if perplexities is not None:
+            self.num_perplexities = len(np.array(perplexities))
         self.alpha = alpha
         self._optimizer = optimizer
         self._batch_size = batch_size
@@ -288,8 +290,7 @@ class Parametric_tSNE(object):
         self._init_model()
         
     def _init_model(self):
-        """ Initialize loss function and Keras model"""
-        self._init_loss_func()
+        """ Initialize Keras model"""
         self.model = models.Sequential(self._all_layers)
 
     @staticmethod
@@ -377,6 +378,22 @@ class Parametric_tSNE(object):
             batch_size=self._batch_size, num_perplexities=self.num_perplexities)
         kl_loss_func.__name__ = 'KL-Divergence'
         self._loss_func = kl_loss_func
+        
+    @staticmethod
+    def _get_num_perplexities(training_betas, num_perplexities):
+        if training_betas is None and num_perplexities is None:
+            return None
+            
+        if training_betas is None:
+            return num_perplexities
+        elif training_betas is not None and num_perplexities is None:
+            return training_betas.shape[1]
+        else:
+            if len(training_betas.shape) == 1:
+                assert num_perplexities == 1, "Mismatch between input training betas and num_perplexities"
+            else:
+                assert training_betas.shape[1] == num_perplexities
+            return num_perplexities
             
     def fit(self, training_data, training_betas=None, epochs=10, verbose=0):
         """
@@ -406,19 +423,17 @@ class Parametric_tSNE(object):
             training_betas = self._calc_training_betas(training_data, self.perplexities)
             self._training_betas = training_betas
         else:
-            if len(self._training_betas.shape) == 1:
-                assert self.num_perplexities == 1, "Mismatch between input training betas and num_perplexities"
-            else:
-                assert self._training_betas.shape[1] == self.num_perplexities
+            self.num_perplexities = self._get_num_perplexities(training_betas, self.num_perplexities)
         
         if self.do_pretrain:
             self._pretrain_layers(training_data, batch_size=self._batch_size, epochs=epochs, verbose=verbose)
         else:
             self.model = models.Sequential(self._all_layers)
         
+        self._init_loss_func()
         self.model.compile(self._optimizer, self._loss_func)
         
-        train_generator = self._make_train_generator(training_data, training_betas, self._batch_size)
+        train_generator = self._make_train_generator(training_data, self._training_betas, self._batch_size)
         
         batches_per_epoch = int(training_data.shape[0] // self._batch_size)
 
@@ -483,10 +498,11 @@ class Parametric_tSNE(object):
         """Save the underlying model to `model_path` using Keras"""
         return self.model.save(model_path)
         
-    def restore_model(self, model_path):
+    def restore_model(self, model_path, training_betas=None, num_perplexities=None):
         """Restore the underlying model from `model_path`"""
         if not self._loss_func:
             # Have to initialize this to load the model
+            self.num_perplexities = self._get_num_perplexities(training_betas, num_perplexities)
             self._init_loss_func()
         cust_objects = {self._loss_func.__name__: self._loss_func}
         self.model = models.load_model(model_path, custom_objects=cust_objects)
