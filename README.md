@@ -34,7 +34,7 @@ layers.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform'
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity, all_layers=all_layers)
 ```
 
-The "perplexity" parameter can also be a list (e.g. [10,20,30,50,100,200]), in which case the probability matrix for each perplexity value will be averaged together for the final metric. This is an ad-hoc method inspired by Verleysen et al 2014. Certain initialization and training steps will be linear in the number of perplexity values used, though it shouldn't affect the speed of the final trained model.
+The "perplexity" parameter can also be a list (e.g. [10,20,30,50,100,200]), in which case the total loss function is a sum of the loss function calculated from each perplexity. This is an ad-hoc method inspired by Verleysen et al 2014. Initialization and training step computation time will be linear in the number of perplexity values used, though it shouldn't affect the speed of the final trained model.
 
 # Footnotes
 
