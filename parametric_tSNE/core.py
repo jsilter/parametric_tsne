@@ -33,16 +33,16 @@ def _make_P_ji(input, betas, in_sq_diffs=None):
     ----------
     input : 2d array_like, (N, D)
         Input data which we wish to calculate similarity probabilities
-    betas : 1d array_like, (N,)
+    betas : 1d array_like, (N, P)
         Gaussian kernel used for each point.
     Returns
     -------
-    P_ji : 2d array_like, (N,N)
+    P_ji : 2d array_like, (N,N,P)
         Similarity probability matrix
     """
     if not in_sq_diffs:
         in_sq_diffs = get_squared_cross_diff_np(input)
-    tmp = in_sq_diffs * betas
+    tmp = in_sq_diffs[:,:,np.newaxis] * betas[np.newaxis,:,:]
     P_ji = np.exp(-1.0*tmp)
     return P_ji
 
@@ -54,15 +54,20 @@ def _make_P_np(input, betas):
     ----------
     input : 2d array_like, (N, D)
         Input data which we wish to calculate similarity probabilities
-    betas : 1d array_like, (N,)
-        Gaussian kernel used for each point.
+    betas : 2d array_like, (N,P)
+        Gaussian kernel(s) used for each point.
     Returns
     -------
-    P : 2d array_like, (N,N)
+    P : nd array_like, (N, N, P)
         Symmetric similarity probability matrix
+        Beta-values across third dimension
     """
     P_ji = _make_P_ji(input, betas)
-    P_ = _get_normed_sym_np(P_ji)
+    P_3 = np.zeros_like(P_ji)
+    for zz in range(P_3.shape[2]):
+        P_3[:, :, zz] = _get_normed_sym_np(P_ji[:, :, zz])
+    #   P_ = P_3.mean(axis=2, keepdims=False)
+    P_ = P_3
     return P_
     
     
@@ -176,21 +181,24 @@ def _make_Q(output, alpha, batch_size):
     return Q_
  
     
-def kl_loss(y_true, y_pred, alpha=1.0, batch_size=None, _eps=DEFAULT_EPS):
+def kl_loss(y_true, y_pred, alpha=1.0, batch_size=None, num_perplexities=None, _eps=DEFAULT_EPS):
     """ Kullback-Leibler Loss function (Tensorflow)
     between the "true" output and the "predicted" output
     Parameters
     ----------
-    y_true : 2d array_like (N,N)
+    y_true : 2d array_like (N, N*P)
         Should be the P matrix calculated from input data.
         Differences in input points using a Gaussian probability distribution
+        Different P (perplexity) values stacked along dimension 1
     y_pred : 2d array_like (N, output_dims)
         Output of the neural network. We will calculate
         the Q matrix based on this output
     alpha : float, optional
         Parameter used to calculate Q. Default 1.0
     batch_size : int, required
-        Number of samples per batch. P_.shape[0]
+        Number of samples per batch. y_true.shape[0]
+    num_perplexities : int, required
+        Number of perplexities stacked along axis 1
     Returns
     -------
     kl_loss : tf.Tensor, scalar value
@@ -202,17 +210,26 @@ def kl_loss(y_true, y_pred, alpha=1.0, batch_size=None, _eps=DEFAULT_EPS):
     
     _tf_eps = tf.constant(_eps, dtype=P_.dtype)
     
-    kl_matr = tf.multiply(P_, tf.log(P_ + _tf_eps) - tf.log(Q_ + _tf_eps), name='kl_matr')
-    toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
-    kl_matr_keep = tf.matrix_set_diag(kl_matr, toset)
-    kl_total_cost = tf.reduce_sum(kl_matr_keep)
+    kls_per_beta = []
+    components = tf.split(P_, num_perplexities, axis=1, name='split_perp')
+    for cur_beta_P in components:
+        #yrange = tf.range(zz*batch_size, (zz+1)*batch_size)
+        #cur_beta_P = tf.slice(P_, [zz*batch_size, [-1, batch_size])
+        #cur_beta_P = P_
+        kl_matr = tf.multiply(cur_beta_P, tf.log(cur_beta_P + _tf_eps) - tf.log(Q_ + _tf_eps), name='kl_matr')
+        toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
+        kl_matr_keep = tf.matrix_set_diag(kl_matr, toset)
+        kl_total_cost_cur_beta = tf.reduce_sum(kl_matr_keep)
+        kls_per_beta.append(kl_total_cost_cur_beta)
+    kl_total_cost = tf.add_n(kls_per_beta)
+    #kl_total_cost = kl_total_cost_cur_beta
     
     return kl_total_cost
     
     
 class Parametric_tSNE(object):
     
-    def __init__(self, num_inputs, num_outputs, perplexity,
+    def __init__(self, num_inputs, num_outputs, perplexities,
                  alpha=1.0, optimizer='adam', batch_size=64, all_layers=None,
                  do_pretrain=True, seed=0):
         """
@@ -221,8 +238,10 @@ class Parametric_tSNE(object):
             Dimension of the (high-dimensional) input
         num_outputs : int
             Dimension of the (low-dimensional) output
-        perplexity: int
-            Desired perplexity. See literature on tSNE for details.
+        perplexities:
+            Desired perplexit(y/ies). Generally interpreted as the number of neighbors to use
+            for distance comparisons but actually doesn't need to be an integer.
+            Can be an array for multi-scale.
         Roughly speaking, this is the number of points which should be considered
         when calculating distances between points. Can be None if one provides own training betas.
         alpha: float
@@ -241,7 +260,12 @@ class Parametric_tSNE(object):
         """
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
-        self.perplexity = perplexity
+        if perplexities is not None and not isinstance(perplexities, (list, tuple, np.ndarray)):
+            perplexities = np.array([perplexities])
+        self.perplexities = perplexities
+        self.num_perplexities = None
+        if perplexities is not None:
+            self.num_perplexities = len(np.array(perplexities))
         self.alpha = alpha
         self._optimizer = optimizer
         self._batch_size = batch_size
@@ -266,18 +290,18 @@ class Parametric_tSNE(object):
         self._init_model()
         
     def _init_model(self):
-        """ Initialize loss function and Keras model"""
-        self._init_loss_func()
+        """ Initialize Keras model"""
         self.model = models.Sequential(self._all_layers)
-        
-    def _calc_training_betas(self, training_data, perplexity, beta_batch_size=1000):
+
+    @staticmethod
+    def _calc_training_betas(training_data, perplexities, beta_batch_size=1000):
         """
         Calculate beta values (gaussian kernel widths) used for training the model
-        For memory reasons, only uses
+        For memory reasons, only uses beta_batch_size points at a time.
         Parameters
         ----------
         training_data : 2d array_like, (N, D)
-        perplexity : float
+        perplexities : float or ndarray-like, (P,)
         beta_batch_size : int, optional
             Only use `beta_batch_size` points to calculate beta values. This is
             for speed and memory reasons. Data must be well-shuffled for this to be effective,
@@ -286,20 +310,24 @@ class Parametric_tSNE(object):
             # batches
         Returns
         -------
-        betas : 1d array_like (N,)
+        betas : 2D array_like (N,P)
         """
-        assert perplexity is not None, "Must provide a desired perplexity if training bata values"
+        assert perplexities is not None, "Must provide desired perplexit(y/ies) if training beta values"
         num_pts = len(training_data)
-        training_betas = np.zeros(num_pts)
+        if not isinstance(perplexities, (list, tuple, np.ndarray)):
+            perplexities = np.array([perplexities])
+        num_perplexities = len(perplexities)
+        training_betas = np.zeros([num_pts, num_perplexities])
 
         # To calculate betas, only use `beta_batch_size` points at a time
         cur_start = 0
         cur_end = min(cur_start+beta_batch_size, num_pts)
         while cur_start < num_pts:
             cur_training_data = training_data[cur_start:cur_end, :]
-            
-            cur_training_betas, cur_P, cur_Hs = calc_betas_loop(cur_training_data, perplexity)
-            training_betas[cur_start:cur_end] = cur_training_betas
+
+            for pind, curperp in enumerate(perplexities):
+                cur_training_betas, cur_P, cur_Hs = calc_betas_loop(cur_training_data, curperp)
+                training_betas[cur_start:cur_end, pind] = cur_training_betas
             
             cur_start += beta_batch_size
             cur_end = min(cur_start+beta_batch_size, num_pts)
@@ -347,9 +375,25 @@ class Parametric_tSNE(object):
         Necessary to do this so we can save/load the model using Keras, since
         the loss function is a custom object"""
         kl_loss_func = functools.partial(kl_loss, alpha=self.alpha, 
-            batch_size=self._batch_size)
+            batch_size=self._batch_size, num_perplexities=self.num_perplexities)
         kl_loss_func.__name__ = 'KL-Divergence'
         self._loss_func = kl_loss_func
+        
+    @staticmethod
+    def _get_num_perplexities(training_betas, num_perplexities):
+        if training_betas is None and num_perplexities is None:
+            return None
+            
+        if training_betas is None:
+            return num_perplexities
+        elif training_betas is not None and num_perplexities is None:
+            return training_betas.shape[1]
+        else:
+            if len(training_betas.shape) == 1:
+                assert num_perplexities == 1, "Mismatch between input training betas and num_perplexities"
+            else:
+                assert training_betas.shape[1] == num_perplexities
+            return num_perplexities
             
     def fit(self, training_data, training_betas=None, epochs=10, verbose=0):
         """
@@ -358,9 +402,9 @@ class Parametric_tSNE(object):
         ----------
         training_data : 2d array_like (N, D)
             Data on which to train the tSNE model
-        training_betas : 1d array_like (N,), optional
-            Widths for gaussian kernel. If `None` (the usual case), they will be calculated based on
-            `training_data` and self.perplexity. One can also provide them here explicitly.
+        training_betas : 2d array_like (N,P), optional
+            Widths for gaussian kernels. If `None` (the usual case), they will be calculated based on
+            `training_data` and self.perplexities. One can also provide them here explicitly.
         epochs: int, optional
         verbose: int, optional
             Default 0. Verbosity level. Passed to Keras fit method
@@ -376,17 +420,20 @@ class Parametric_tSNE(object):
         self._epochs = epochs
         
         if self._training_betas is None:
-            training_betas = self._calc_training_betas(training_data, self.perplexity)
+            training_betas = self._calc_training_betas(training_data, self.perplexities)
             self._training_betas = training_betas
+        else:
+            self.num_perplexities = self._get_num_perplexities(training_betas, self.num_perplexities)
         
         if self.do_pretrain:
             self._pretrain_layers(training_data, batch_size=self._batch_size, epochs=epochs, verbose=verbose)
         else:
             self.model = models.Sequential(self._all_layers)
         
+        self._init_loss_func()
         self.model.compile(self._optimizer, self._loss_func)
         
-        train_generator = self._make_train_generator(training_data, training_betas, self._batch_size)
+        train_generator = self._make_train_generator(training_data, self._training_betas, self._batch_size)
         
         batches_per_epoch = int(training_data.shape[0] // self._batch_size)
 
@@ -418,7 +465,7 @@ class Parametric_tSNE(object):
         Parameters
         ----------
         training_data : 2d array_like (N, D)
-        betas : 1d array_like (N,)
+        betas : 2d array_like (N, P)
         batch_size: int
 
         Returns
@@ -434,21 +481,28 @@ class Parametric_tSNE(object):
         while True:
             cur_step = (cur_step + 1) % num_steps
             cur_bounds = batch_size*cur_step, batch_size*(cur_step+1)
-            cur_dat = training_data[cur_bounds[0]:cur_bounds[1],:]
-            cur_betas = betas[cur_bounds[0]:cur_bounds[1]]
+            cur_range = np.arange(cur_bounds[0], cur_bounds[1])
+            cur_dat = training_data[cur_range, :]
+            cur_betas = betas[cur_range, :]
             
-            P_array = _make_P_np(cur_dat, cur_betas)
+            P_arrays_3d = _make_P_np(cur_dat, cur_betas)
             
-            yield cur_dat, P_array
+            P_arrays = [P_arrays_3d[:,:,pp] for pp in range(P_arrays_3d.shape[2])]
+            
+            # Stack them along dimension 1. This is a hack
+            P_arrays = np.concatenate(P_arrays, axis=1)
+            
+            yield cur_dat, P_arrays
             
     def save_model(self, model_path):
         """Save the underlying model to `model_path` using Keras"""
         return self.model.save(model_path)
         
-    def restore_model(self, model_path):
+    def restore_model(self, model_path, training_betas=None, num_perplexities=None):
         """Restore the underlying model from `model_path`"""
         if not self._loss_func:
             # Have to initialize this to load the model
+            self.num_perplexities = self._get_num_perplexities(training_betas, num_perplexities)
             self._init_loss_func()
         cust_objects = {self._loss_func.__name__: self._loss_func}
         self.model = models.load_model(model_path, custom_objects=cust_objects)
