@@ -10,6 +10,7 @@ high_dims = train_data.shape[1]
 num_outputs = 2
 perplexity = 30
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity)
+ptSNE.fit(train_data)
 output_res = ptSNE.transform(train_data)
 ```
 
@@ -36,6 +37,8 @@ ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity, all_layers=all_layer
 
 The "perplexity" parameter can also be a list (e.g. [10,20,30,50,100,200]), in which case the total loss function is a sum of the loss function calculated from each perplexity. This is an ad-hoc method inspired by Verleysen et al 2014. Initialization and training step computation time will be linear in the number of perplexity values used, though it shouldn't affect the speed of the final trained model.
 
+If the dimensionality is large (>100), it is recommended that one use a simple dimensionality reduction method first. See van der Maaten's FAQ on tSNE.
+
 # Footnotes
 
 1. van der Maaten 2009 used a ReLu as the output layer. The default here is a linear output layer. ReLu would occasionally produce poor results in the form of all zeroes in one dimension.
@@ -52,3 +55,8 @@ MATLAB Parametric tSNE implementation: https://lvdmaaten.github.io/tsne/code/pts
 Available at https://lvdmaaten.github.io/tsne/
 
 Mirrored at https://github.com/jsilter/lvdmaaten.github.io/tree/master/tsne/code
+
+Also see the tSNE FAQ: https://lvdmaaten.github.io/tsne/#faq
+Archive: http://archive.is/lc4lr
+
+
