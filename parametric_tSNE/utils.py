@@ -6,7 +6,7 @@ __doc__ = """ numpy utility functions used for tSNE modelling"""
 import numpy as np
 
 
-def Hbeta_vec(distances, betas):
+def Hbeta_vec(distances: np.ndarray, betas: np.ndarray):
     """
     Function that computes the Gaussian kernel values given a vector of
     squared Euclidean distances, and the precision of the Gaussian kernel.
@@ -37,7 +37,7 @@ def Hbeta_vec(distances, betas):
     return H, p_matr
 
 
-def Hbeta_scalar(distances, beta):
+def Hbeta_scalar(distances: np.ndarray, beta: float):
     """
     Function that computes the Gaussian kernel values given a vector of
     squared Euclidean distances, and the precision of the Gaussian kernel.
@@ -66,12 +66,12 @@ def Hbeta_scalar(distances, beta):
     return H, p_matr
 
 
-def get_squared_cross_diff_np(X_):
+def get_squared_cross_diff_np(x: np.ndarray):
     """Compute squared differences of sample data vectors.
         Z_ij = ||x_i - x_j||^2, where x_i = X_[i, :]
     Parameters
     ----------
-    X_ : 2-d array_like, (N, D)
+    x : 2-d array_like, (N, D)
         Calculates outer vector product
         This is the current batch of input data; `batch_size` x `dimension`
     Returns
@@ -80,9 +80,9 @@ def get_squared_cross_diff_np(X_):
         `batch_size` x `batch_size`
         Matrix of squared differences between x_i and x_j
     """
-    batch_size = X_.shape[0]
+    batch_size = x.shape[0]
 
-    expanded = np.expand_dims(X_, 1)
+    expanded = np.expand_dims(x, 1)
     # "tiled" is now stacked up all the samples along dimension 1
     tiled = np.tile(expanded, np.stack([1, batch_size, 1]))
 
@@ -94,13 +94,28 @@ def get_squared_cross_diff_np(X_):
     return sum_act
 
 
-def get_Lmax(num_points):
+def get_Lmax(num_points) -> int:
     return np.floor(np.log2(num_points / 4.0))
 
 
-def get_multiscale_perplexities(num_points):
+def get_multiscale_perplexities(num_points: int) -> np.ndarray:
     """From
-    Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction
+
+    Generate range of perplexities based on number of points.
+    Parameters
+    ----------
+    num_points: int
+        Number of known data points
+
+    Returns
+    -------
+    perplexities: np.ndarray
+        List of perplexities to use
+
+    References
+    ----------
+    Lee, John & Peluffo-Ordóñez, Diego & Verleysen, Michel. (2015).
+    Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction.
     """
     Lmax = get_Lmax(num_points)
     _L_vals = np.arange(2, Lmax)
@@ -108,7 +123,9 @@ def get_multiscale_perplexities(num_points):
     return perplexities
 
 
-def calc_betas_loop(indata, perplexity, tol=1e-4, max_tries=50):
+def calc_betas_loop(
+    indata: np.ndarray, perplexity: float, tol: float = 1e-4, max_tries: int = 50
+):
     """
     Calculate beta values for a desired perplexity via binary search
     Uses a loop; could be made faster with cython
@@ -182,7 +199,7 @@ def calc_betas_loop(indata, perplexity, tol=1e-4, max_tries=50):
     return betas, Hs, p_matr
 
 
-def _calc_betas_vec(indata, perplexity, tol=1e-4, max_tries=50):
+def _calc_betas_vec(indata: np.ndarray, perplexity: float, tol=1e-4, max_tries=50):
     """
     Calculate beta values for a desired perplexity via binary search
     Vectorized version
