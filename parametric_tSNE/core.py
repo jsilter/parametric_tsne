@@ -284,7 +284,10 @@ class Parametric_tSNE(object):
         self._optimizer = optimizer
         self._batch_size = batch_size
         self.do_pretrain = do_pretrain
+        
         self._loss_func = None
+        self._epochs = None
+        self._training_betas = None
 
         tf.random.set_seed(seed)
         np.random.seed(seed)
@@ -481,8 +484,6 @@ class Parametric_tSNE(object):
                 epochs=epochs,
                 verbose=verbose,
             )
-        else:
-            self.model = tfk.models.Sequential(self._all_layers)
 
         self._init_loss_func()
         self.model.compile(self._optimizer, self._loss_func)
@@ -499,8 +500,8 @@ class Parametric_tSNE(object):
                     time=datetime.datetime.now(), epochs=epochs
                 )
             )
-        self.model.fit_generator(
-            train_generator, batches_per_epoch, epochs, verbose=verbose
+        self.model.fit(
+            train_generator, steps_per_epoch=batches_per_epoch, epochs=epochs, verbose=verbose
         )
 
         if verbose:

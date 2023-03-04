@@ -7,6 +7,7 @@ Generate some simple data in high (14) dimension, train a model,
 and run additional generated data through the trained model"""
 
 import datetime
+import logging
 import os
 import sys
 
@@ -34,6 +35,10 @@ except Exception as ex:
     print("Error trying to import sklearn, will not plot PCA")
     print(ex)
     pass
+
+
+def basic_configure_logging():
+    logging.basicConfig(format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S %Z')
 
 
 def _gen_cluster_centers(num_clusters, top_cluster_size):
@@ -167,7 +172,7 @@ if __name__ == "__main__":
     num_clusters = 14
     model_path_template = "example_viz_{model_tag}_{test_data_tag}"
     figure_template = "example_viz_tSNE_{test_data_tag}.pdf"
-    override = True
+    override = False
 
     num_samps = 1000
     do_pretrain = True
@@ -176,10 +181,13 @@ if __name__ == "__main__":
     batch_size = 128
     plot_pca = has_sklearn
     color_palette = sns.color_palette("hls", num_clusters)
+    
     test_data_tag = "hollow"
     # test_data_tag = 'dense'
+    if len(sys.argv) >= 2:
+        test_data_tag = sys.argv[1]
 
-    debug = True
+    debug = False
     if debug:
         model_path_template = "example_viz_debug_{model_tag}_{test_data_tag}"
         figure_template = "example_viz_debug_{test_data_tag}.pdf"
@@ -241,7 +249,7 @@ if __name__ == "__main__":
         perplexity = tlist["perplexity"]
         if perplexity is None:
             perplexity = get_multiscale_perplexities(2 * num_samps)
-            print("Using multiple perplexities: %s" % (",".join(map(str, perplexity))))
+            logging.info("Using multiple perplexities: %s" % (",".join(map(str, perplexity))))
 
         ptSNE = Parametric_tSNE(
             train_data.shape[1],
@@ -259,18 +267,10 @@ if __name__ == "__main__":
 
         if override or not os.path.exists(model_path):
             ptSNE.fit(train_data, epochs=epochs, verbose=1)
-            print(
-                "{time}: Saving model {model_path}".format(
-                    time=datetime.datetime.now(), model_path=model_path
-                )
-            )
+            logging.info(f"Training finished; saving to {model_path}")
             ptSNE.save_model(model_path)
         else:
-            print(
-                "{time}: Loading from {model_path}".format(
-                    time=datetime.datetime.now(), model_path=model_path
-                )
-            )
+            logging.info(f"Loading from {model_path}")
             ptSNE.restore_model(model_path)
 
         tlist["transformer"] = ptSNE
@@ -304,13 +304,7 @@ if __name__ == "__main__":
         # for lh in leg.legendHandles:
         #     lh._marker.set_alpha(1.0)
 
-        plt.title(
-            "{label:s} Transform with {num_clusters:d} clusters\n{test_data_tag:s} Data".format(
-                label=label,
-                num_clusters=num_clusters,
-                test_data_tag=test_data_tag.capitalize(),
-            )
-        )
+        plt.title(f"{label:s} Transform with {num_clusters:d} clusters\n{test_data_tag:s} Data")
 
         if pdf_obj:
             plt.savefig(pdf_obj, format="pdf")
