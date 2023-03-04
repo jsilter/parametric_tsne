@@ -40,21 +40,21 @@ test_res = ptSNE.transform(test_data)
 See [the example script](./example/example_viz_parametric_tSNE.py) (and its corresponding [readme](./example/README.md)) for more information.
 
 If one wants to use a different network architecture, one must specify the layers.
-The neural network is implemented using Keras and Tensorflow, so layers should be specified using Keras:
+The neural network is implemented using Keras, so layers should be specified using Keras:
 
 ```python
 from parametric_tSNE import Parametric_tSNE
-import tensorflow as tf
-tfkl = tf.keras.layers
+import keras
+import keras.layers
 
 train_data = load_my_training_data()
 high_dims = train_data.shape[1]
 num_outputs = 2
 perplexity = 30
 
-all_layers = [tfkl.Dense(10, input_shape=(high_dims,), activation='sigmoid', kernel_initializer='glorot_uniform'),
-tfkl.Dense(100, activation='sigmoid', kernel_initializer='glorot_uniform'),
-tfkl.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform')]
+all_layers = [keras.layers.Dense(10, input_shape=(high_dims,), activation='sigmoid', kernel_initializer='glorot_uniform'),
+keras.layers.Dense(100, activation='sigmoid', kernel_initializer='glorot_uniform'),
+keras.layers.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform')]
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity, all_layers=all_layers)
 ```
 

@@ -23,19 +23,21 @@ import datetime
 import functools
 from typing import List, Union, Optional, Iterator, Tuple
 
+import keras
+import keras.layers
+import keras.models
+import keras.losses
 import numpy as np
-import tensorflow as tf
+import torch
 
-from .utils import calc_betas_loop, get_squared_cross_diff_np
 
-tfk = tf.keras
-tfkl = tfk.layers
+from .utils import calc_betas_loop, get_squared_cross_diff_np, torch_set_diag
 
 DEFAULT_EPS = 1e-7
 
 
 def _make_P_ji(data: np.ndarray, betas: np.ndarray, in_sq_diffs: np.ndarray = None):
-    """Calculate similarity probabilities based on data data
+    """Calculate similarity probabilities based on data
     Parameters
     ----------
     data : 2d np.ndarray, (N, D)
@@ -59,7 +61,7 @@ def _make_P_ji(data: np.ndarray, betas: np.ndarray, in_sq_diffs: np.ndarray = No
 
 def _make_P_np(data: np.ndarray, betas: np.ndarray):
     """
-    Calculate similarity probabilities based on data data
+    Calculate similarity probabilities based on data
     Parameters
     ----------
     data : 2d array_like, (N, D)
@@ -80,19 +82,19 @@ def _make_P_np(data: np.ndarray, betas: np.ndarray):
     return P_
 
 
-def _make_P_tf(data: tf.Tensor, betas: np.ndarray, batch_size: int):
-    """Tensorflow implementation of _make_P_np.
+def _make_P_pt(data: torch.Tensor, betas: np.ndarray):
+    """PyTorch implementation of _make_P_np.
     Not documented because not used, for example only."""
-    in_sq_diffs = _get_squared_cross_diff_tf(data)
+    in_sq_diffs = _get_squared_cross_diff_torch(data)
     tmp = in_sq_diffs * betas
-    P = tf.exp(-1.0 * tmp)
-    P = _get_normed_sym_tf(P, batch_size)
+    P = torch.exp(-1.0 * tmp)
+    P = _get_normed_sym_torch(P)
     return P
 
 
-def _get_squared_cross_diff_tf(x: tf.Tensor):
+def _get_squared_cross_diff_torch(x: torch.Tensor):
     """Compute squared differences of sample data vectors.
-    Implementation for Tensorflow Tensors
+    Implementation for Pytorch Tensors
     Z_ij = ||x_i - x_j||^2, where x_i = X_[i, :]
     Parameters
     ----------
@@ -105,16 +107,16 @@ def _get_squared_cross_diff_tf(x: tf.Tensor):
         `batch_size` x `batch_size`
         Tensor of squared differences between x_i and x_j
     """
-    batch_size = tf.shape(x)[0]
+    batch_size = x.shape[0]
 
-    expanded = tf.expand_dims(x, 1)
+    expanded = torch.unsqueeze(x, 1)
     # "tiled" is now stacked up all the samples along dimension 1
-    tiled = tf.tile(expanded, tf.stack([1, batch_size, 1]))
+    tiled = torch.tile(expanded, dims=[1, batch_size, 1])
 
-    tiled_trans = tf.transpose(tiled, perm=[1, 0, 2])
+    tiled_trans = torch.permute(tiled, dims=[1, 0, 2])
 
     diffs = tiled - tiled_trans
-    sum_act = tf.reduce_sum(tf.square(diffs), axis=2)
+    sum_act = torch.sum(torch.square(diffs), dim=2)
 
     return sum_act
 
@@ -144,31 +146,33 @@ def _get_normed_sym_np(x: np.ndarray, eps: float = DEFAULT_EPS) -> np.ndarray:
     return P
 
 
-def _get_normed_sym_tf(x: tf.Tensor, batch_size: int) -> np.ndarray:
+def _get_normed_sym_torch(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     """
     Compute the normalized and symmetrized probability matrix from
-    relative probabilities x, where x is a Tensorflow Tensor
+    relative probabilities x, where x is a PyTorch tensor.
+
     Parameters
     ----------
-    x : 2-d Tensor (N, N)
-        asymmetric probabilities. For instance, x(i, j) = P(i|j)
-    batch_size: int
-        N dimension of `x.` Needs to be passed explicitly.
+    x : 2-d tensor (N, N)
+        asymmetric probabilities. For instance, x[i, j] = P(i|j)
+    eps: float, optional
+        Factor in denominator to prevent dividing by 0.
+
     Returns
     -------
-    P : 2-d Tensor (N, N)
+    P : 2-d tensor (N, N)
         symmetric probabilities, making the assumption that P(i|j) = P(j|i)
-        Diagonals are all 0s."""
-    toset = tf.constant(0, shape=[batch_size], dtype=x.dtype)
-    x = tf.linalg.set_diag(x, toset)
-    norm_facs = tf.reduce_sum(x, axis=0, keepdims=True)
-    x = x / norm_facs
-    x = 0.5 * (x + tf.transpose(x))
+        Diagonals are all 0s.
+    """
+    P = torch_set_diag(x, 0.0)
+    norm_facs = torch.sum(P, dim=0, keepdim=True)
+    P = P / (norm_facs + eps)
+    P = 0.5 * (P + P.transpose(0, 1))
+    
+    return P
 
-    return x
 
-
-def _make_Q(output: tf.Tensor, alpha: float, batch_size: int):
+def _make_Q(output: torch.Tensor, alpha: float):
     """
     Calculate the "Q" probability distribution of the output
     Based on the t-distribution.
@@ -179,76 +183,86 @@ def _make_Q(output: tf.Tensor, alpha: float, batch_size: int):
         Output of the neural network
     alpha : float
         `alpha` parameter. Recommend `output_dims` - 1.0
-    batch_size : int
-        N dimension of `output`.
     Returns
     -------
     Q_ : 2-d Tensor (N, N)
         Symmetric "Q" probability distribution; similarity of
         points based on output data
     """
-    out_sq_diffs = _get_squared_cross_diff_tf(output)
-    Q = tf.pow((1 + out_sq_diffs / alpha), -(alpha + 1) / 2)
-    Q = _get_normed_sym_tf(Q, batch_size)
+    out_sq_diffs = _get_squared_cross_diff_torch(output)
+    Q = torch.pow((1 + out_sq_diffs / alpha), -(alpha + 1) / 2)
+    Q = _get_normed_sym_torch(Q)
     return Q
 
 
-def kl_loss(
-    y_true: np.ndarray,
-    y_pred: tf.Tensor,
-    alpha: float = 1.0,
-    batch_size: int = None,
-    num_perplexities: int = None,
-    eps: float = DEFAULT_EPS,
-):
-    """Kullback-Leibler Loss function (Tensorflow)
-    between the "true" output and the "predicted" output
-    Parameters
-    ----------
-    y_true : 2d array_like (N, N*P)
-        Should be the P matrix calculated from input data.
-        Differences in data points using a Gaussian probability distribution
-        Different P (perplexity) values stacked along dimension 1
-    y_pred : tf.Tensor, 2d (N, output_dims)
-        Output of the neural network. We will calculate
-        the Q matrix based on this output
-    alpha : float, optional
-        Parameter used to calculate Q. Default 1.0
-    batch_size : int, required
-        Number of samples per batch. y_true.shape[0]
-    num_perplexities : int, required
-        Number of perplexities stacked along axis 1
-    eps: float, optional
-        Epsilon used to prevent divide by zero
-    Returns
-    -------
-    kl_loss : tf.Tensor, scalar value
-        Kullback-Leibler divergence P_ || Q_
+class KLDivergenceLoss(keras.losses.Loss):
+    def __init__(self, alpha, num_perplexities, **kwargs):
+        super().__init__(**kwargs)
+        self.alpha = alpha
+        self.num_perplexities = num_perplexities
 
-    """
-    P_ = y_true
-    Q = _make_Q(y_pred, alpha, batch_size)
+    def call(self, y_true, y_pred):
+        return self.kl_loss(y_true, y_pred, self.alpha, self.num_perplexities)
 
-    tf_eps = tf.constant(eps, dtype=P_.dtype)
+    def get_config(self):
+        base_config = super().get_config()
+        return {**base_config, "alpha": self.alpha, "num_perplexities": self.num_perplexities}
 
-    kls_per_beta = []
-    components = tf.split(P_, num_perplexities, axis=1, name="split_perp")
-    for cur_beta_P in components:
-        # yrange = tf.range(zz*batch_size, (zz+1)*batch_size)
-        # cur_beta_P = tf.slice(P_, [zz*batch_size, [-1, batch_size])
-        # cur_beta_P = P_
-        kl_matr = tf.multiply(
-            cur_beta_P,
-            tf.math.log(cur_beta_P + tf_eps) - tf.math.log(Q + tf_eps),
-            name="kl_matr",
-        )
-        toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
-        kl_matr_keep = tf.linalg.set_diag(kl_matr, toset)
-        kl_total_cost_cur_beta = tf.reduce_sum(kl_matr_keep)
-        kls_per_beta.append(kl_total_cost_cur_beta)
-    kl_total_cost = tf.add_n(kls_per_beta)
-
-    return kl_total_cost
+    @classmethod
+    def kl_loss(
+        cls,
+        y_true: np.ndarray,
+        y_pred: torch.Tensor,
+        alpha: float = 1.0,
+        num_perplexities: int = None,
+        eps: float = DEFAULT_EPS,
+    ):
+        """Kullback-Leibler Loss function (Tensorflow)
+        between the "true" output and the "predicted" output
+        Parameters
+        ----------
+        y_true : 2d array_like (N, N*P)
+            Should be the P matrix calculated from input data.
+            Differences in data points using a Gaussian probability distribution
+            Different P (perplexity) values stacked along dimension 1
+        y_pred : torch.Tensor, 2d (N, output_dims)
+            Output of the neural network. We will calculate
+            the Q matrix based on this output
+        alpha : float, optional
+            Parameter used to calculate Q. Default 1.0
+        num_perplexities : int, required
+            Number of perplexities stacked along axis 1
+        eps: float, optional
+            Epsilon used to prevent divide by zero
+        Returns
+        -------
+        kl_loss : torch.Tensor, scalar value
+            Kullback-Leibler divergence P_ || Q_
+    
+        """
+        P_ = y_true
+        if not isinstance(P_, torch.Tensor):
+            P_ = torch.Tensor(P_)
+        Q = _make_Q(y_pred, alpha)
+    
+        # Make a one-element tensor for epsilon
+        
+        tensor_eps = torch.Tensor([eps])
+        # tensor_eps = eps
+    
+        kls_per_beta = []
+        split_size_or_sections = P_.shape[1] // num_perplexities
+        components = torch.split(P_, split_size_or_sections, dim=1)
+        for cur_beta_P in components:
+            kl_matr = cur_beta_P * (torch.log(cur_beta_P + tensor_eps) - torch.log(Q + tensor_eps))
+            # kl_matr_keep = tf.linalg.set_diag(kl_matr, toset)
+            kl_matr = torch_set_diag(kl_matr, 0.)
+            kl_total_cost_cur_beta = torch.sum(kl_matr)
+            kls_per_beta.append(kl_total_cost_cur_beta)
+        
+        kl_total_cost = torch.sum(torch.stack(kls_per_beta))
+    
+        return kl_total_cost
 
 
 class Parametric_tSNE:
@@ -259,7 +273,7 @@ class Parametric_tSNE:
         perplexities: Union[float, List[float]],
         alpha: float = 1.0,
         optimizer="adam",
-        all_layers: Optional[List[tfkl.Layer]] = None,
+        all_layers: Optional[List[keras.layers.Layer]] = None,
         do_pretrain: bool = True,
         seed: int = 0,
         batch_size: int = 64,
@@ -283,7 +297,7 @@ class Parametric_tSNE:
         optimizer: string or Optimizer, optional
             default 'adam'. Passed to model.fit
         all_layers: Optional
-            optional. Layers to use in model. If none provided, uses
+            Layers to use in model. If none provided, uses
             the same structure as van der Maaten 2009
         do_pretrain: bool, optional
             Whether to perform layerwise pretraining. Default True
@@ -311,42 +325,43 @@ class Parametric_tSNE:
         self._epochs = None
         self._training_betas = None
 
-        tf.random.set_seed(seed)
+        torch.manual_seed(seed)
         np.random.seed(seed)
 
         # If no layers provided, use the same architecture as van der maaten 2009 paper
         if all_layers is None:
             all_layer_sizes = [num_inputs, 500, 500, 2000, num_outputs]
             all_layers = [
-                tfkl.Dense(
+                keras.layers.Input(shape=(num_inputs,)),
+                keras.layers.Dense(
                     all_layer_sizes[1],
-                    input_shape=(num_inputs,),
                     activation="sigmoid",
                     kernel_initializer="glorot_uniform",
                 )
             ]
 
             for lsize in all_layer_sizes[2:-1]:
-                cur_layer = tfkl.Dense(
+                cur_layer = keras.layers.Dense(
                     lsize, activation="sigmoid", kernel_initializer="glorot_uniform"
                 )
                 all_layers.append(cur_layer)
 
             all_layers.append(
-                tfkl.Dense(
+                keras.layers.Dense(
                     num_outputs,
                     activation="linear",
                     kernel_initializer="glorot_uniform",
                 )
             )
 
+        assert len(all_layers) >= 2, "Must have at least 2 layers"
         self._all_layers = all_layers
         self.model = None
         self._init_model()
 
     def _init_model(self):
-        """Initialize Keras model"""
-        self.model = tfk.models.Sequential(self._all_layers)
+        """Initialize neural network"""
+        self.model = keras.Sequential(self._all_layers)
 
     @staticmethod
     def _calc_training_betas(
@@ -427,9 +442,9 @@ class Parametric_tSNE:
         for ind, end_layer in enumerate(self._all_layers):
             # Create AE and training
             cur_layers = self._all_layers[0:(ind + 1)]
-            ae = tfk.models.Sequential(cur_layers)
+            ae = keras.Sequential(cur_layers)
 
-            decoder = tfkl.Dense(pretrain_data.shape[1], activation="linear")
+            decoder = keras.layers.Dense(pretrain_data.shape[1], activation="linear")
             ae.add(decoder)
 
             ae.compile(loss="mean_squared_error", optimizer="rmsprop")
@@ -441,7 +456,7 @@ class Parametric_tSNE:
                 verbose=verbose,
             )
 
-        self.model = tfk.models.Sequential(self._all_layers)
+        self.model = keras.Sequential(self._all_layers)
 
         if verbose:
             print("{time}: Finished pretraining".format(time=datetime.datetime.now()))
@@ -450,14 +465,8 @@ class Parametric_tSNE:
         """Initialize loss function based on parameters fed to constructor
         Necessary to do this, so we can save/load the model using Keras, since
         the loss function is a custom object"""
-        kl_loss_func = functools.partial(
-            kl_loss,
-            alpha=self.alpha,
-            batch_size=self._batch_size,
-            num_perplexities=self.num_perplexities,
-        )
-        kl_loss_func.__name__ = "KL-Divergence"
-        self._loss_func = kl_loss_func
+        self._loss_func = KLDivergenceLoss(alpha=self.alpha, num_perplexities=self.num_perplexities,
+                                           name="KL-Divergence")
 
     @staticmethod
     def _get_num_perplexities(
@@ -542,6 +551,7 @@ class Parametric_tSNE:
                     time=datetime.datetime.now(), epochs=epochs
                 )
             )
+            
         self.model.fit(
             train_generator,
             steps_per_epoch=batches_per_epoch,
@@ -614,6 +624,8 @@ class Parametric_tSNE:
 
     def save_model(self, model_path: str):
         """Save the underlying model to `model_path` using Keras"""
+        if not model_path.endswith(".keras"):
+            model_path += ".keras"
         return self.model.save(model_path)
 
     def restore_model(
@@ -629,6 +641,6 @@ class Parametric_tSNE:
                 training_betas, num_perplexities
             )
             self._init_loss_func()
-        cust_objects = {self._loss_func.__name__: self._loss_func}
-        self.model = tfk.models.load_model(model_path, custom_objects=cust_objects)
+        cust_objects = {type(self._loss_func).__name__: self._loss_func}
+        self.model = keras.models.load_model(model_path, custom_objects=cust_objects)
         self._all_layers = self.model.layers

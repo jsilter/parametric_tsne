@@ -17,6 +17,7 @@ Each cluster has 2000/14 = 142 points, so perplexity = 100 is closest to "correc
 In general it seems the multiscale separates 0-4 from 5-13 best while also preserving the separation between clusters 0-4. However, the boundary between 0-4 and 5-13 is not entirely obvious and much more subtle than with higher perplexity.
 
 ## Requirements 
+parametric_tSNE (this package)
 matplotlib  
 seaborn  
 scikit-learn (PCA only)  

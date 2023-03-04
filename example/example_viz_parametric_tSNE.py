@@ -10,6 +10,9 @@ import logging
 import os
 import sys
 from typing import Union
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,10 +35,10 @@ except Exception as ex:
 plt.style.use("ggplot")
 
 
-def basic_configure_logging():
-    logging.basicConfig(
-        format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S %Z"
-    )
+def basic_configure_logging(level=logging.INFO):
+    logging.basicConfig(level=level,
+                        format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S %Z"
+                        )
 
 
 def _gen_cluster_centers(num_clusters: int, top_cluster_size: int):
@@ -171,9 +174,12 @@ def _plot_kde(output_res: np.ndarray, pick_rows, color_palette, alpha: float = 0
 
 
 def main():
+    basic_configure_logging()
+    
     # Parametric tSNE example
     num_clusters = 14
-    model_path_template = "example_viz_{model_tag}_{test_data_tag}"
+    # keras models must end with ".keras"
+    model_path_template = "example_viz_{model_tag}_{test_data_tag}.keras"
     figure_template = "example_viz_tSNE_{test_data_tag}.pdf"
     override = False
 

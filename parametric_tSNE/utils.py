@@ -1,9 +1,10 @@
 from __future__ import division  # Python 2 users only
 from __future__ import print_function
 
-__doc__ = """ numpy utility functions used for tSNE modelling"""
+__doc__ = """ Utility functions used for tSNE modelling"""
 
 import numpy as np
+import torch
 
 
 def Hbeta_vec(distances: np.ndarray, betas: np.ndarray):
@@ -94,14 +95,37 @@ def get_squared_cross_diff_np(x: np.ndarray):
     return sum_act
 
 
+def get_squared_cross_diff_torch(x: torch.Tensor) -> torch.Tensor:
+    """
+    Compute squared differences of sample data vectors in PyTorch.
+    Z_ij = ||x_i - x_j||^2, where x_i = X_[i, :]
+
+    Parameters
+    ----------
+    x : 2-d tensor, (N, D)
+        This is the current batch of input data; `batch_size` x `dimension`
+
+    Returns
+    -------
+    Z_ij: 2-d tensor, (N, N)
+        `batch_size` x `batch_size`
+        Matrix of squared differences between x_i and x_j
+    """
+    # Using broadcasting for efficient computation of pairwise differences
+    diffs = x.unsqueeze(1) - x.unsqueeze(0)
+    sum_act = torch.sum(diffs ** 2, dim=2)
+    
+    return sum_act
+
+
 def get_Lmax(num_points) -> int:
     return np.floor(np.log2(num_points / 4.0))
 
 
 def get_multiscale_perplexities(num_points: int) -> np.ndarray:
-    """From
-
+    """
     Generate range of perplexities based on number of points.
+    
     Parameters
     ----------
     num_points: int
@@ -199,64 +223,19 @@ def calc_betas_loop(
     return betas, Hs, p_matr
 
 
-def _calc_betas_vec(indata: np.ndarray, perplexity: float, tol=1e-4, max_tries=50):
+def torch_set_diag(x: torch.Tensor, val: float) -> torch.Tensor:
     """
-    Calculate beta values for a desired perplexity via binary search
-    Vectorized version
-    Not documented because not used
+    Set diagonal of a matrix to by a new value
+    Parameters
+    ----------
+    x: 2-d tensor, (N, M)
+        Matrix to modify
+    val: float
+        Value to set diagonal to
+    Returns
+    -------
+    x: 2-d tensor, (N, M)
+        Modified matrix
     """
-    logPx = np.log(perplexity)
-    num_samps = indata.shape[0]
-
-    beta_init = np.ones([num_samps], dtype=float)
-    in_sq_diffs = get_squared_cross_diff_np(indata)
-
-    betamins = -np.inf * beta_init.copy()
-    betamaxs = np.inf * beta_init.copy()
-    betas = beta_init.copy()
-
-    # Initialize Hdiffs as some large amount
-    overall_Hdiff = 100 * tol * np.ones_like(beta_init)
-    tries = 0
-
-    while tries < max_tries:
-        # At any given iteration we are only operating on a subset of indices
-        use_locs = np.where(np.abs(overall_Hdiff) > tol)[0]
-
-        if len(use_locs) == 0:
-            break
-
-        # Compute the Gaussian kernel and entropy for the current precision
-        Di_matr = in_sq_diffs[use_locs, :]
-        curH, curP_matr = Hbeta_vec(Di_matr, betas[use_locs])
-        Hdiff = curH - logPx
-        overall_Hdiff[use_locs] = Hdiff
-
-        # Some locations should have higher beta, some lower beta
-        increase_beta_locs = use_locs[Hdiff > 0.0]
-        decrease_beta_locs = use_locs[Hdiff <= 0.0]
-
-        overlap = np.intersect1d(increase_beta_locs, decrease_beta_locs)
-        assert len(overlap) == 0
-
-        if len(increase_beta_locs) > 0:
-            betamins[increase_beta_locs] = betas[increase_beta_locs]
-            betas[increase_beta_locs] = np.where(
-                np.isinf(betamaxs[increase_beta_locs]),
-                betas[increase_beta_locs] * 2.0,
-                (betas[increase_beta_locs] + betamaxs[increase_beta_locs]) / 2.0,
-            )
-
-        if len(decrease_beta_locs) > 0:
-            betamaxs[decrease_beta_locs] = betas[decrease_beta_locs]
-            betas[decrease_beta_locs] = np.where(
-                np.isinf(betamins[decrease_beta_locs]),
-                betas[decrease_beta_locs] / 2.0,
-                (betas[decrease_beta_locs] + betamins[decrease_beta_locs]) / 2.0,
-            )
-
-        tries += 1
-
-    finalH, p_matr = Hbeta_vec(in_sq_diffs, betas)
-
-    return betas, p_matr, finalH
+    x[torch.arange(x.shape[0]), torch.arange(x.shape[1])] = val
+    return x
