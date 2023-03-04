@@ -118,8 +118,8 @@ def get_multiscale_perplexities(num_points: int) -> np.ndarray:
     Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction.
     """
     Lmax = get_Lmax(num_points)
-    _L_vals = np.arange(2, Lmax)
-    perplexities = 2.0 ** (_L_vals)
+    l_vals = np.arange(2, Lmax)
+    perplexities = 2.0 ** l_vals
     return perplexities
 
 

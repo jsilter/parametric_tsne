@@ -6,10 +6,10 @@ __doc__ = """ Example usage of parametric_tSNE.
 Generate some simple data in high (14) dimension, train a model,
 and run additional generated data through the trained model"""
 
-import datetime
 import logging
 import os
 import sys
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,10 +33,12 @@ plt.style.use("ggplot")
 
 
 def basic_configure_logging():
-    logging.basicConfig(format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S %Z')
+    logging.basicConfig(
+        format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S %Z"
+    )
 
 
-def _gen_cluster_centers(num_clusters, top_cluster_size):
+def _gen_cluster_centers(num_clusters: int, top_cluster_size: int):
     # Make two sets of points, to have local and global distances
     cluster_centers = np.zeros([num_clusters, num_clusters])
     cluster_centers[0:top_cluster_size, 0:top_cluster_size] = 1.0
@@ -47,7 +49,7 @@ def _gen_cluster_centers(num_clusters, top_cluster_size):
     return cluster_centers
 
 
-def _gen_hollow_spheres(num_clusters, num_samps, num_rand_points=0):
+def _gen_hollow_spheres(num_clusters: int, num_samps: int, num_rand_points: int = 0):
     top_cluster_size = min([5, num_samps])
     cluster_centers = _gen_cluster_centers(num_clusters, top_cluster_size)
     cluster_assignments = np.arange(0, num_samps) % num_clusters
@@ -96,7 +98,7 @@ def _gen_hollow_spheres(num_clusters, num_samps, num_rand_points=0):
     return final_points, cluster_assignments
 
 
-def _gen_dense_spheres(num_clusters, num_samps, num_rand_points=0):
+def _gen_dense_spheres(num_clusters: int, num_samps: int, num_rand_points: int = 0):
     """Generate `num_clusters` sets of dense spheres of points, in
     `num_clusters` - dimensonal space. Total number of points = `num_samps`"""
     # Make two sets of points, to have local and global distances
@@ -123,7 +125,13 @@ def _gen_dense_spheres(num_clusters, num_samps, num_rand_points=0):
     return test_data, pick_rows
 
 
-def _plot_scatter(output_res, pick_rows, color_palette, alpha=0.5, symbol="o"):
+def _plot_scatter(
+    output_res: np.ndarray,
+    pick_rows,
+    color_palette,
+    alpha: float = 0.5,
+    symbol: str = "o",
+):
     num_clusters = len(set(pick_rows))
     for ci in range(num_clusters):
         cur_plot_rows = pick_rows == ci
@@ -138,7 +146,7 @@ def _plot_scatter(output_res, pick_rows, color_palette, alpha=0.5, symbol="o"):
         )
 
 
-def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
+def _plot_kde(output_res: np.ndarray, pick_rows, color_palette, alpha: float = 0.5):
     num_clusters = len(set(pick_rows))
     for ci in range(num_clusters):
         cur_plot_rows = pick_rows == ci
@@ -162,7 +170,7 @@ def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
         )
 
 
-if __name__ == "__main__":
+def main():
     # Parametric tSNE example
     num_clusters = 14
     model_path_template = "example_viz_{model_tag}_{test_data_tag}"
@@ -176,7 +184,7 @@ if __name__ == "__main__":
     batch_size = 128
     plot_pca = has_sklearn
     color_palette = sns.color_palette("hls", num_clusters)
-    
+
     test_data_tag = "hollow"
     # test_data_tag = 'dense'
     if len(sys.argv) >= 2:
@@ -208,10 +216,14 @@ if __name__ == "__main__":
 
     # Generate "training" data
     np.random.seed(12345)
-    train_data, pick_rows = _gen_test_data(num_clusters, num_samps, num_rand_points)
+    train_data, train_cluster_assignments = _gen_test_data(
+        num_clusters, num_samps, num_rand_points
+    )
     # Generate "test" data
     np.random.seed(86131894)
-    test_data, test_pick_rows = _gen_test_data(num_clusters, num_samps, num_rand_points)
+    test_data, test_cluster_assignments = _gen_test_data(
+        num_clusters, num_samps, num_rand_points
+    )
 
     transformer_list = [
         {
@@ -241,10 +253,12 @@ if __name__ == "__main__":
     ]
 
     for tlist in transformer_list:
-        perplexity = tlist["perplexity"]
+        perplexity: Union[None, int, np.ndarray] = tlist["perplexity"]
         if perplexity is None:
             perplexity = get_multiscale_perplexities(2 * num_samps)
-            logging.info("Using multiple perplexities: %s" % (",".join(map(str, perplexity))))
+            logging.info(
+                "Using multiple perplexities: %s" % (",".join(map(str, perplexity)))
+            )
 
         ptSNE = Parametric_tSNE(
             train_data.shape[1],
@@ -289,17 +303,21 @@ if __name__ == "__main__":
 
         plt.figure()
         # Create a contour plot of training data
-        _plot_kde(output_res, pick_rows, color_palette, 0.5)
+        _plot_kde(output_res, train_cluster_assignments, color_palette, 0.5)
 
         # Scatter plot of test data
-        _plot_scatter(test_res, test_pick_rows, color_palette, alpha=0.1, symbol="*")
+        _plot_scatter(
+            test_res, test_cluster_assignments, color_palette, alpha=0.1, symbol="*"
+        )
 
-        leg = plt.legend(bbox_to_anchor=(1.0, 1.0))
+        # leg = plt.legend(bbox_to_anchor=(1.0, 1.0))
         # Set marker to be fully opaque in legend
         # for lh in leg.legendHandles:
         #     lh._marker.set_alpha(1.0)
 
-        plt.title(f"{label:s} Transform with {num_clusters:d} clusters\n{test_data_tag:s} Data")
+        plt.title(
+            f"{label:s} Transform with {num_clusters:d} clusters\n{test_data_tag:s} Data"
+        )
 
         if pdf_obj:
             plt.savefig(pdf_obj, format="pdf")
@@ -308,3 +326,7 @@ if __name__ == "__main__":
         pdf_obj.close()
     else:
         plt.show()
+
+
+if __name__ == "__main__":
+    main()
