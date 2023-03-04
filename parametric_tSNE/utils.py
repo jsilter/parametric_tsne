@@ -28,12 +28,12 @@ def Hbeta_vec(distances, betas):
         p_matr = np.exp(-D * beta) / sum(np.exp(-D * beta))
         This funcion is vectorized and calculates the full P matrix
     """
-    beta_matr = (betas[:,np.newaxis] * np.ones_like(distances))
+    beta_matr = betas[:, np.newaxis] * np.ones_like(distances)
     p_matr = np.exp(-distances * beta_matr)
     sumP = np.sum(p_matr, axis=1)
     H = np.log(sumP) + (betas * np.sum(distances * p_matr, axis=1)) / sumP
-    p_matr = p_matr / (sumP[:,np.newaxis]*np.ones_like(p_matr))
-    
+    p_matr = p_matr / (sumP[:, np.newaxis] * np.ones_like(p_matr))
+
     return H, p_matr
 
 
@@ -62,7 +62,7 @@ def Hbeta_scalar(distances, beta):
     sumP = np.sum(p_matr)
     H = np.log(sumP) + (beta * np.sum(distances * p_matr)) / sumP
     p_matr = p_matr / sumP
-    
+
     return H, p_matr
 
 
@@ -81,29 +81,30 @@ def get_squared_cross_diff_np(X_):
         Matrix of squared differences between x_i and x_j
     """
     batch_size = X_.shape[0]
-    
+
     expanded = np.expand_dims(X_, 1)
     # "tiled" is now stacked up all the samples along dimension 1
     tiled = np.tile(expanded, np.stack([1, batch_size, 1]))
-    
-    tiled_trans = np.transpose(tiled, axes=[1,0,2])
-    
+
+    tiled_trans = np.transpose(tiled, axes=[1, 0, 2])
+
     diffs = tiled - tiled_trans
     sum_act = np.sum(np.square(diffs), axis=2)
-    
+
     return sum_act
 
 
 def get_Lmax(num_points):
-    return np.floor(np.log2(num_points/4.0))
+    return np.floor(np.log2(num_points / 4.0))
 
 
 def get_multiscale_perplexities(num_points):
     """From
-    Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction"""
+    Multiscale stochastic neighbor embedding: Towards parameter-free dimensionality reduction
+    """
     Lmax = get_Lmax(num_points)
     _L_vals = np.arange(2, Lmax)
-    perplexities = 2.0**(_L_vals)
+    perplexities = 2.0 ** (_L_vals)
     return perplexities
 
 
@@ -141,26 +142,26 @@ def calc_betas_loop(indata, perplexity, tol=1e-4, max_tries=50):
     betas = beta_init.copy()
     p_matr = np.zeros([num_samps, num_samps])
     Hs = beta_init.copy()
-    
+
     in_sq_diffs = get_squared_cross_diff_np(indata)
 
     loop_samps = range(num_samps)
     for ss in loop_samps:
         betamin = -np.inf
         betamax = np.inf
-        
+
         Di = in_sq_diffs[ss, :]
         H, thisPx = Hbeta_scalar(Di, betas[ss])
         del H
-        Hdiff = 100*tol
-        
+        Hdiff = 100 * tol
+
         tries = 0
         while abs(Hdiff) > tol and tries < max_tries:
             # Compute the Gaussian kernel and entropy for the current precision
             H, thisPx = Hbeta_scalar(Di, betas[ss])
             Hdiff = H - logPx
             tries = tries + 1
-            
+
             if Hdiff > 0.0:
                 betamin = betas[ss]
                 if np.isinf(betamax):
@@ -173,7 +174,7 @@ def calc_betas_loop(indata, perplexity, tol=1e-4, max_tries=50):
                     betas[ss] = betas[ss] / 2.0
                 else:
                     betas[ss] = (betas[ss] + betamin) / 2.0
-        
+
         # Set the final row of P
         p_matr[ss, :] = thisPx
         Hs[ss] = H
@@ -189,28 +190,27 @@ def _calc_betas_vec(indata, perplexity, tol=1e-4, max_tries=50):
     """
     logPx = np.log(perplexity)
     num_samps = indata.shape[0]
-    
+
     beta_init = np.ones([num_samps], dtype=float)
     in_sq_diffs = get_squared_cross_diff_np(indata)
 
-    betamins = -np.inf*beta_init.copy()
-    betamaxs = np.inf*beta_init.copy()
+    betamins = -np.inf * beta_init.copy()
+    betamaxs = np.inf * beta_init.copy()
     betas = beta_init.copy()
-    
-    # Initialize Hdiffs as some large amount
-    overall_Hdiff = 100*tol*np.ones_like(beta_init)
-    tries = 0
-    
-    while tries < max_tries:
 
+    # Initialize Hdiffs as some large amount
+    overall_Hdiff = 100 * tol * np.ones_like(beta_init)
+    tries = 0
+
+    while tries < max_tries:
         # At any given iteration we are only operating on a subset of indices
         use_locs = np.where(np.abs(overall_Hdiff) > tol)[0]
 
         if len(use_locs) == 0:
             break
-        
+
         # Compute the Gaussian kernel and entropy for the current precision
-        Di_matr = in_sq_diffs[use_locs,:]
+        Di_matr = in_sq_diffs[use_locs, :]
         curH, curP_matr = Hbeta_vec(Di_matr, betas[use_locs])
         Hdiff = curH - logPx
         overall_Hdiff[use_locs] = Hdiff
@@ -218,20 +218,28 @@ def _calc_betas_vec(indata, perplexity, tol=1e-4, max_tries=50):
         # Some locations should have higher beta, some lower beta
         increase_beta_locs = use_locs[Hdiff > 0.0]
         decrease_beta_locs = use_locs[Hdiff <= 0.0]
-        
+
         overlap = np.intersect1d(increase_beta_locs, decrease_beta_locs)
         assert len(overlap) == 0
-        
+
         if len(increase_beta_locs) > 0:
             betamins[increase_beta_locs] = betas[increase_beta_locs]
-            betas[increase_beta_locs] = np.where(np.isinf(betamaxs[increase_beta_locs]), betas[increase_beta_locs]*2.0, (betas[increase_beta_locs] + betamaxs[increase_beta_locs])/2.0)
-        
+            betas[increase_beta_locs] = np.where(
+                np.isinf(betamaxs[increase_beta_locs]),
+                betas[increase_beta_locs] * 2.0,
+                (betas[increase_beta_locs] + betamaxs[increase_beta_locs]) / 2.0,
+            )
+
         if len(decrease_beta_locs) > 0:
             betamaxs[decrease_beta_locs] = betas[decrease_beta_locs]
-            betas[decrease_beta_locs] = np.where(np.isinf(betamins[decrease_beta_locs]), betas[decrease_beta_locs]/2.0, (betas[decrease_beta_locs] + betamins[decrease_beta_locs])/2.0)
-            
+            betas[decrease_beta_locs] = np.where(
+                np.isinf(betamins[decrease_beta_locs]),
+                betas[decrease_beta_locs] / 2.0,
+                (betas[decrease_beta_locs] + betamins[decrease_beta_locs]) / 2.0,
+            )
+
         tries += 1
-    
+
     finalH, p_matr = Hbeta_vec(in_sq_diffs, betas)
-    
+
     return betas, p_matr, finalH
