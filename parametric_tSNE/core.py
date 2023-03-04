@@ -4,8 +4,15 @@ from __future__ import print_function
 
 __doc__ = """ 
 Module for building a parametric tSNE model. 
-Trains a neural network on input data. 
+Trains a neural network on input data.
 One can then transform other data based on this model
+
+Common abbreviations and terms:
+N = number of points
+D = number of dimensions
+P  = number of perplexity values used.
+If using multiple perplexities, some ndarrays will have a dimension of values
+for each perplexity.
 
 Main reference:
 van der Maaten, L. (2009). Learning a parametric embedding by preserving local structure. RBM, 500(500), 26.
@@ -14,6 +21,7 @@ See README.md for others
 
 import datetime
 import functools
+from typing import List, Union, Optional, Iterator, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -26,34 +34,37 @@ tfkl = tfk.layers
 DEFAULT_EPS = 1e-7
 
 
-def _make_P_ji(input, betas, in_sq_diffs=None):
-    """Calculate similarity probabilities based on input data
+def _make_P_ji(data: np.ndarray, betas: np.ndarray, in_sq_diffs: np.ndarray = None):
+    """Calculate similarity probabilities based on data data
     Parameters
     ----------
-    input : 2d array_like, (N, D)
+    data : 2d np.ndarray, (N, D)
         Input data which we wish to calculate similarity probabilities
-    betas : 1d array_like, (N, P)
+    betas : 2d np.ndarray, (N, P)
         Gaussian kernel used for each point.
+    in_sq_diffs: 2d np.ndarray, (N, N)
+        Squared difference between each data point. Can be reused to save computation,
+        or if one wants a custom distance metric. Otherwise we use `get_squared_cross_diff_np`.
     Returns
     -------
-    P_ji : 2d array_like, (N,N,P)
+    P_ji : 2d array_like, (N, N, P)
         Similarity probability matrix
     """
     if not in_sq_diffs:
-        in_sq_diffs = get_squared_cross_diff_np(input)
+        in_sq_diffs = get_squared_cross_diff_np(data)
     tmp = in_sq_diffs[:, :, np.newaxis] * betas[np.newaxis, :, :]
     P_ji = np.exp(-1.0 * tmp)
     return P_ji
 
 
-def _make_P_np(input, betas):
+def _make_P_np(data: np.ndarray, betas: np.ndarray):
     """
-    Calculate similarity probabilities based on input data
+    Calculate similarity probabilities based on data data
     Parameters
     ----------
-    input : 2d array_like, (N, D)
+    data : 2d array_like, (N, D)
         Input data which we wish to calculate similarity probabilities
-    betas : 2d array_like, (N,P)
+    betas : 2d array_like, (N, P)
         Gaussian kernel(s) used for each point.
     Returns
     -------
@@ -61,7 +72,7 @@ def _make_P_np(input, betas):
         Symmetric similarity probability matrix
         Beta-values across third dimension
     """
-    P_ji = _make_P_ji(input, betas)
+    P_ji = _make_P_ji(data, betas)
     P_3 = np.zeros_like(P_ji)
     for zz in range(P_3.shape[2]):
         P_3[:, :, zz] = _get_normed_sym_np(P_ji[:, :, zz])
@@ -69,23 +80,23 @@ def _make_P_np(input, betas):
     return P_
 
 
-def _make_P_tf(input, betas, batch_size):
+def _make_P_tf(data: tf.Tensor, betas: np.ndarray, batch_size: int):
     """Tensorflow implementation of _make_P_np.
     Not documented because not used, for example only."""
-    in_sq_diffs = _get_squared_cross_diff_tf(input)
+    in_sq_diffs = _get_squared_cross_diff_tf(data)
     tmp = in_sq_diffs * betas
-    P_ = tf.exp(-1.0 * tmp)
-    P_ = _get_normed_sym_tf(P_, batch_size)
-    return P_
+    P = tf.exp(-1.0 * tmp)
+    P = _get_normed_sym_tf(P, batch_size)
+    return P
 
 
-def _get_squared_cross_diff_tf(X_):
+def _get_squared_cross_diff_tf(x: tf.Tensor):
     """Compute squared differences of sample data vectors.
     Implementation for Tensorflow Tensors
     Z_ij = ||x_i - x_j||^2, where x_i = X_[i, :]
     Parameters
     ----------
-    X_ : 2-d Tensor, (N, D)
+    x : 2-d Tensor, (N, D)
         Calculates outer vector product
         This is the current batch of input data; `batch_size` x `dimension`
     Returns
@@ -94,9 +105,9 @@ def _get_squared_cross_diff_tf(X_):
         `batch_size` x `batch_size`
         Tensor of squared differences between x_i and x_j
     """
-    batch_size = tf.shape(X_)[0]
+    batch_size = tf.shape(x)[0]
 
-    expanded = tf.expand_dims(X_, 1)
+    expanded = tf.expand_dims(x, 1)
     # "tiled" is now stacked up all the samples along dimension 1
     tiled = tf.tile(expanded, tf.stack([1, batch_size, 1]))
 
@@ -108,52 +119,56 @@ def _get_squared_cross_diff_tf(X_):
     return sum_act
 
 
-def _get_normed_sym_np(X_, _eps=DEFAULT_EPS):
+def _get_normed_sym_np(x: np.ndarray, eps: float = DEFAULT_EPS) -> np.ndarray:
     """
     Compute the normalized and symmetrized probability matrix from
-    relative probabilities X_, where X_ is a numpy array
+    relative probabilities x, where x is a numpy array
     Parameters
     ----------
-    X_ : 2-d array_like (N, N)
-        asymmetric probabilities. For instance, X_(i, j) = P(i|j)
+    x : 2-d array_like (N, N)
+        asymmetric probabilities. For instance, x(i, j) = P(i|j)
+    eps: float, optional
+        Factor in denominator to prevent dividing by 0.
     Returns
     -------
     P : 2-d array_like (N, N)
         symmetric probabilities, making the assumption that P(i|j) = P(j|i)
         Diagonals are all 0s."""
-    batch_size = X_.shape[0]
+    batch_size = x.shape[0]
     zero_diags = 1.0 - np.identity(batch_size)
-    X_ *= zero_diags
-    norm_facs = np.sum(X_, axis=0, keepdims=True)
-    X_ = X_ / (norm_facs + _eps)
-    X_ = 0.5 * (X_ + np.transpose(X_))
+    P = x * zero_diags
+    norm_facs = np.sum(x, axis=0, keepdims=True)
+    P = P / (norm_facs + eps)
+    P = 0.5 * (P + np.transpose(P))
 
-    return X_
+    return P
 
 
-def _get_normed_sym_tf(X_, batch_size):
+def _get_normed_sym_tf(x: tf.Tensor, batch_size: int) -> np.ndarray:
     """
     Compute the normalized and symmetrized probability matrix from
-    relative probabilities X_, where X_ is a Tensorflow Tensor
+    relative probabilities x, where x is a Tensorflow Tensor
     Parameters
     ----------
-    X_ : 2-d Tensor (N, N)
-        asymmetric probabilities. For instance, X_(i, j) = P(i|j)
+    x : 2-d Tensor (N, N)
+        asymmetric probabilities. For instance, x(i, j) = P(i|j)
+    batch_size: int
+        N dimension of `x.` Needs to be passed explicitly.
     Returns
     -------
     P : 2-d Tensor (N, N)
         symmetric probabilities, making the assumption that P(i|j) = P(j|i)
         Diagonals are all 0s."""
-    toset = tf.constant(0, shape=[batch_size], dtype=X_.dtype)
-    X_ = tf.linalg.set_diag(X_, toset)
-    norm_facs = tf.reduce_sum(X_, axis=0, keepdims=True)
-    X_ = X_ / norm_facs
-    X_ = 0.5 * (X_ + tf.transpose(X_))
+    toset = tf.constant(0, shape=[batch_size], dtype=x.dtype)
+    x = tf.linalg.set_diag(x, toset)
+    norm_facs = tf.reduce_sum(x, axis=0, keepdims=True)
+    x = x / norm_facs
+    x = 0.5 * (x + tf.transpose(x))
 
-    return X_
+    return x
 
 
-def _make_Q(output, alpha, batch_size):
+def _make_Q(output: tf.Tensor, alpha: float, batch_size: int):
     """
     Calculate the "Q" probability distribution of the output
     Based on the t-distribution.
@@ -165,8 +180,7 @@ def _make_Q(output, alpha, batch_size):
     alpha : float
         `alpha` parameter. Recommend `output_dims` - 1.0
     batch_size : int
-        The batch size. output.shape[0] == batch_size but we need it
-        provided explicitly
+        N dimension of `output`.
     Returns
     -------
     Q_ : 2-d Tensor (N, N)
@@ -174,13 +188,18 @@ def _make_Q(output, alpha, batch_size):
         points based on output data
     """
     out_sq_diffs = _get_squared_cross_diff_tf(output)
-    Q_ = tf.pow((1 + out_sq_diffs / alpha), -(alpha + 1) / 2)
-    Q_ = _get_normed_sym_tf(Q_, batch_size)
-    return Q_
+    Q = tf.pow((1 + out_sq_diffs / alpha), -(alpha + 1) / 2)
+    Q = _get_normed_sym_tf(Q, batch_size)
+    return Q
 
 
 def kl_loss(
-    y_true, y_pred, alpha=1.0, batch_size=None, num_perplexities=None, _eps=DEFAULT_EPS
+    y_true: np.ndarray,
+    y_pred: tf.Tensor,
+    alpha: float = 1.0,
+    batch_size: int = None,
+    num_perplexities: int = None,
+    eps: float = DEFAULT_EPS,
 ):
     """Kullback-Leibler Loss function (Tensorflow)
     between the "true" output and the "predicted" output
@@ -188,9 +207,9 @@ def kl_loss(
     ----------
     y_true : 2d array_like (N, N*P)
         Should be the P matrix calculated from input data.
-        Differences in input points using a Gaussian probability distribution
+        Differences in data points using a Gaussian probability distribution
         Different P (perplexity) values stacked along dimension 1
-    y_pred : 2d array_like (N, output_dims)
+    y_pred : tf.Tensor, 2d (N, output_dims)
         Output of the neural network. We will calculate
         the Q matrix based on this output
     alpha : float, optional
@@ -199,6 +218,8 @@ def kl_loss(
         Number of samples per batch. y_true.shape[0]
     num_perplexities : int, required
         Number of perplexities stacked along axis 1
+    eps: float, optional
+        Epsilon used to prevent divide by zero
     Returns
     -------
     kl_loss : tf.Tensor, scalar value
@@ -206,9 +227,9 @@ def kl_loss(
 
     """
     P_ = y_true
-    Q_ = _make_Q(y_pred, alpha, batch_size)
+    Q = _make_Q(y_pred, alpha, batch_size)
 
-    _tf_eps = tf.constant(_eps, dtype=P_.dtype)
+    tf_eps = tf.constant(eps, dtype=P_.dtype)
 
     kls_per_beta = []
     components = tf.split(P_, num_perplexities, axis=1, name="split_perp")
@@ -218,7 +239,7 @@ def kl_loss(
         # cur_beta_P = P_
         kl_matr = tf.multiply(
             cur_beta_P,
-            tf.math.log(cur_beta_P + _tf_eps) - tf.math.log(Q_ + _tf_eps),
+            tf.math.log(cur_beta_P + tf_eps) - tf.math.log(Q + tf_eps),
             name="kl_matr",
         )
         toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
@@ -226,32 +247,33 @@ def kl_loss(
         kl_total_cost_cur_beta = tf.reduce_sum(kl_matr_keep)
         kls_per_beta.append(kl_total_cost_cur_beta)
     kl_total_cost = tf.add_n(kls_per_beta)
-    # kl_total_cost = kl_total_cost_cur_beta
 
     return kl_total_cost
 
 
-class Parametric_tSNE(object):
+class Parametric_tSNE:
     def __init__(
         self,
-        num_inputs,
-        num_outputs,
-        perplexities,
-        alpha=1.0,
+        num_inputs: int,
+        num_outputs: int,
+        perplexities: Union[float, List[float]],
+        alpha: float = 1.0,
         optimizer="adam",
-        batch_size=64,
-        all_layers=None,
-        do_pretrain=True,
-        seed=0,
+        all_layers: Optional[List[tfkl.Layer]] = None,
+        do_pretrain: bool = True,
+        seed: int = 0,
+        batch_size: int = 64,
     ):
         """
 
+        Main class used for training parametric tSNE model.
+
         num_inputs : int
-            Dimension of the (high-dimensional) input
+            Dimension of the (high-dimensional) data
         num_outputs : int
             Dimension of the (low-dimensional) output
         perplexities:
-            Desired perplexit(y/ies). Generally interpreted as the number of neighbors to use
+            Desired perplexities (one or more). Generally interpreted as the number of neighbors to use
             for distance comparisons but actually doesn't need to be an integer.
             Can be an array for multi-scale.
         Roughly speaking, this is the number of points which should be considered
@@ -259,16 +281,16 @@ class Parametric_tSNE(object):
         alpha: float
             alpha scaling parameter of output t-distribution
         optimizer: string or Optimizer, optional
-            default 'adam'. Passed to keras.fit
-        batch_size: int, optional
-            default 64.
-        all_layers: list of keras.layer objects or None
+            default 'adam'. Passed to model.fit
+        all_layers: Optional
             optional. Layers to use in model. If none provided, uses
             the same structure as van der Maaten 2009
         do_pretrain: bool, optional
             Whether to perform layerwise pretraining. Default True
         seed: int, optional
             Default 0. Seed for Tensorflow state.
+        batch_size: int, optional.
+            Default 64. Batch size used in training.
         """
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
@@ -284,7 +306,7 @@ class Parametric_tSNE(object):
         self._optimizer = optimizer
         self._batch_size = batch_size
         self.do_pretrain = do_pretrain
-        
+
         self._loss_func = None
         self._epochs = None
         self._training_betas = None
@@ -319,6 +341,7 @@ class Parametric_tSNE(object):
             )
 
         self._all_layers = all_layers
+        self.model = None
         self._init_model()
 
     def _init_model(self):
@@ -326,7 +349,11 @@ class Parametric_tSNE(object):
         self.model = tfk.models.Sequential(self._all_layers)
 
     @staticmethod
-    def _calc_training_betas(training_data, perplexities, beta_batch_size=1000):
+    def _calc_training_betas(
+        training_data: np.ndarray,
+        perplexities: Union[float, np.ndarray],
+        beta_batch_size: int = 1000,
+    ) -> np.ndarray:
         """
         Calculate beta values (gaussian kernel widths) used for training the model
         For memory reasons, only uses beta_batch_size points at a time.
@@ -341,6 +368,7 @@ class Parametric_tSNE(object):
         Returns
         -------
         betas : 2D array_like (N,P)
+            Beta values for each point and perplexity value
         """
         assert (
             perplexities is not None
@@ -368,12 +396,18 @@ class Parametric_tSNE(object):
 
         return training_betas
 
-    def _pretrain_layers(self, pretrain_data, batch_size=64, epochs=10, verbose=0):
+    def _pretrain_layers(
+        self,
+        pretrain_data: np.ndarray,
+        batch_size: int = 64,
+        epochs: int = 10,
+        verbose: int = 0,
+    ):
         """
         Pretrain layers using stacked auto-encoders
         Parameters
         ----------
-        pretrain_data : 2d array_lay, (N,D)
+        pretrain_data : 2d array, (N,D)
             Data to use for pretraining. Can be the same as used for training
         batch_size : int, optional
         epochs : int, optional
@@ -392,7 +426,7 @@ class Parametric_tSNE(object):
 
         for ind, end_layer in enumerate(self._all_layers):
             # Create AE and training
-            cur_layers = self._all_layers[0:ind+1]
+            cur_layers = self._all_layers[0:(ind + 1)]
             ae = tfk.models.Sequential(cur_layers)
 
             decoder = tfkl.Dense(pretrain_data.shape[1], activation="linear")
@@ -426,7 +460,9 @@ class Parametric_tSNE(object):
         self._loss_func = kl_loss_func
 
     @staticmethod
-    def _get_num_perplexities(training_betas, num_perplexities):
+    def _get_num_perplexities(
+        training_betas: Optional[np.ndarray], num_perplexities: Optional[int]
+    ):
         if training_betas is None and num_perplexities is None:
             return None
 
@@ -438,12 +474,18 @@ class Parametric_tSNE(object):
             if len(training_betas.shape) == 1:
                 assert (
                     num_perplexities == 1
-                ), "Mismatch between input training betas and num_perplexities"
+                ), "Mismatch between data training betas and num_perplexities"
             else:
                 assert training_betas.shape[1] == num_perplexities
             return num_perplexities
 
-    def fit(self, training_data, training_betas=None, epochs=10, verbose=0):
+    def fit(
+        self,
+        training_data: np.ndarray,
+        training_betas: Optional[np.ndarray] = None,
+        epochs: int = 10,
+        verbose: int = 0,
+    ):
         """
         Train the neural network model using provided `training_data`
         Parameters
@@ -459,7 +501,7 @@ class Parametric_tSNE(object):
 
         Returns
         -------
-        None. Model trained in place
+            None. Model trained in place
         """
 
         assert (
@@ -501,7 +543,10 @@ class Parametric_tSNE(object):
                 )
             )
         self.model.fit(
-            train_generator, steps_per_epoch=batches_per_epoch, epochs=epochs, verbose=verbose
+            train_generator,
+            steps_per_epoch=batches_per_epoch,
+            epochs=epochs,
+            verbose=verbose,
         )
 
         if verbose:
@@ -511,8 +556,10 @@ class Parametric_tSNE(object):
                 )
             )
 
-    def transform(self, test_data):
-        """Transform the `test_data`. Must have the same second dimension as training data
+    def transform(self, test_data: np.ndarray) -> np.ndarray:
+        """Transform the `test_data` based on trained model.
+        test_data.shape[1] must match train_data.shape[1].
+        That is, the test data must have the same high-dimension value.
         Parameters
         ----------
             test_data : 2d array_like (M, num_inputs)
@@ -529,7 +576,9 @@ class Parametric_tSNE(object):
         return self.model.predict(test_data)
 
     @staticmethod
-    def _make_train_generator(training_data, betas, batch_size):
+    def _make_train_generator(
+        training_data: np.ndarray, betas: np.ndarray, batch_size: int
+    ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
         """Generator to make batches of training data. Cycles forever
         Parameters
         ----------
@@ -537,7 +586,7 @@ class Parametric_tSNE(object):
         betas : 2d array_like (N, P)
         batch_size: int
 
-        Returns
+        Yields
         -------
         cur_dat : 2d array_like (batch_size, D)
             Slice of `training_data`
@@ -563,11 +612,16 @@ class Parametric_tSNE(object):
 
             yield cur_dat, P_arrays
 
-    def save_model(self, model_path):
+    def save_model(self, model_path: str):
         """Save the underlying model to `model_path` using Keras"""
         return self.model.save(model_path)
 
-    def restore_model(self, model_path, training_betas=None, num_perplexities=None):
+    def restore_model(
+        self,
+        model_path: str,
+        training_betas: Optional[np.ndarray] = None,
+        num_perplexities: Optional[int] = None,
+    ) -> None:
         """Restore the underlying model from `model_path`"""
         if not self._loss_func:
             # Have to initialize this to load the model
