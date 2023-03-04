@@ -17,9 +17,11 @@ import functools
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.keras import layers, models
 
 from .utils import calc_betas_loop, get_squared_cross_diff_np
+
+tfk = tf.keras
+tfkl = tfk.layers
 
 DEFAULT_EPS = 1e-7
 
@@ -292,7 +294,7 @@ class Parametric_tSNE(object):
         if all_layers is None:
             all_layer_sizes = [num_inputs, 500, 500, 2000, num_outputs]
             all_layers = [
-                layers.Dense(
+                tfkl.Dense(
                     all_layer_sizes[1],
                     input_shape=(num_inputs,),
                     activation="sigmoid",
@@ -301,13 +303,13 @@ class Parametric_tSNE(object):
             ]
 
             for lsize in all_layer_sizes[2:-1]:
-                cur_layer = layers.Dense(
+                cur_layer = tfkl.Dense(
                     lsize, activation="sigmoid", kernel_initializer="glorot_uniform"
                 )
                 all_layers.append(cur_layer)
 
             all_layers.append(
-                layers.Dense(
+                tfkl.Dense(
                     num_outputs,
                     activation="linear",
                     kernel_initializer="glorot_uniform",
@@ -319,7 +321,7 @@ class Parametric_tSNE(object):
 
     def _init_model(self):
         """Initialize Keras model"""
-        self.model = models.Sequential(self._all_layers)
+        self.model = tfk.models.Sequential(self._all_layers)
 
     @staticmethod
     def _calc_training_betas(training_data, perplexities, beta_batch_size=1000):
@@ -389,12 +391,11 @@ class Parametric_tSNE(object):
             )
 
         for ind, end_layer in enumerate(self._all_layers):
-            # print('Pre-training layer {0:d}'.format(ind))
             # Create AE and training
-            cur_layers = self._all_layers[0 : ind + 1]
-            ae = models.Sequential(cur_layers)
+            cur_layers = self._all_layers[0:ind+1]
+            ae = tfk.models.Sequential(cur_layers)
 
-            decoder = layers.Dense(pretrain_data.shape[1], activation="linear")
+            decoder = tfkl.Dense(pretrain_data.shape[1], activation="linear")
             ae.add(decoder)
 
             ae.compile(loss="mean_squared_error", optimizer="rmsprop")
@@ -406,7 +407,7 @@ class Parametric_tSNE(object):
                 verbose=verbose,
             )
 
-        self.model = models.Sequential(self._all_layers)
+        self.model = tfk.models.Sequential(self._all_layers)
 
         if verbose:
             print("{time}: Finished pretraining".format(time=datetime.datetime.now()))
@@ -484,7 +485,7 @@ class Parametric_tSNE(object):
                 verbose=verbose,
             )
         else:
-            self.model = models.Sequential(self._all_layers)
+            self.model = tfk.models.Sequential(self._all_layers)
 
         self._init_loss_func()
         self.model.compile(self._optimizer, self._loss_func)
@@ -577,5 +578,5 @@ class Parametric_tSNE(object):
             )
             self._init_loss_func()
         cust_objects = {self._loss_func.__name__: self._loss_func}
-        self.model = models.load_model(model_path, custom_objects=cust_objects)
+        self.model = tfk.models.load_model(model_path, custom_objects=cust_objects)
         self._all_layers = self.model.layers
