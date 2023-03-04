@@ -2,8 +2,8 @@
 from __future__ import division  # Python 2 users only
 from __future__ import print_function
 
-__doc__ = """ Example usage of parametric_tSNE. 
-Generate some simple data in high (14) dimension, train a model, 
+__doc__ = """ Example usage of parametric_tSNE.
+Generate some simple data in high (14) dimension, train a model,
 and run additional generated data through the trained model"""
 
 import datetime
@@ -144,12 +144,12 @@ def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
         cur_plot_rows = pick_rows == ci
         cur_cmap = sns.light_palette(color_palette[ci], as_cmap=True)
         sns.kdeplot(
-            output_res[cur_plot_rows, 0],
-            output_res[cur_plot_rows, 1],
+            x=output_res[cur_plot_rows, 0],
+            y=output_res[cur_plot_rows, 1],
             cmap=cur_cmap,
-            shade=True,
+            fill=True,
             alpha=alpha,
-            shade_lowest=False,
+            thresh=0.05,
         )
         centroid = output_res[cur_plot_rows, :].mean(axis=0)
         plt.annotate(
@@ -165,7 +165,7 @@ def _plot_kde(output_res, pick_rows, color_palette, alpha=0.5):
 if __name__ == "__main__":
     # Parametric tSNE example
     num_clusters = 14
-    model_path_template = "example_viz_{model_tag}_{test_data_tag}.h5"
+    model_path_template = "example_viz_{model_tag}_{test_data_tag}"
     figure_template = "example_viz_tSNE_{test_data_tag}.pdf"
     override = True
 
@@ -179,9 +179,9 @@ if __name__ == "__main__":
     test_data_tag = "hollow"
     # test_data_tag = 'dense'
 
-    debug = False
+    debug = True
     if debug:
-        model_path_template = "example_viz_debug_{model_tag}_{test_data_tag}.h5"
+        model_path_template = "example_viz_debug_{model_tag}_{test_data_tag}"
         figure_template = "example_viz_debug_{test_data_tag}.pdf"
         num_samps = 400
         do_pretrain = False
@@ -301,8 +301,8 @@ if __name__ == "__main__":
 
         leg = plt.legend(bbox_to_anchor=(1.0, 1.0))
         # Set marker to be fully opaque in legend
-        for lh in leg.legendHandles:
-            lh._legmarker.set_alpha(1.0)
+        # for lh in leg.legendHandles:
+        #     lh._marker.set_alpha(1.0)
 
         plt.title(
             "{label:s} Transform with {num_clusters:d} clusters\n{test_data_tag:s} Data".format(

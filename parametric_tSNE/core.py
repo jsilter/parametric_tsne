@@ -65,7 +65,6 @@ def _make_P_np(input, betas):
     P_3 = np.zeros_like(P_ji)
     for zz in range(P_3.shape[2]):
         P_3[:, :, zz] = _get_normed_sym_np(P_ji[:, :, zz])
-    #   P_ = P_3.mean(axis=2, keepdims=False)
     P_ = P_3
     return P_
 
@@ -146,8 +145,8 @@ def _get_normed_sym_tf(X_, batch_size):
         symmetric probabilities, making the assumption that P(i|j) = P(j|i)
         Diagonals are all 0s."""
     toset = tf.constant(0, shape=[batch_size], dtype=X_.dtype)
-    X_ = tf.matrix_set_diag(X_, toset)
-    norm_facs = tf.reduce_sum(X_, axis=0, keep_dims=True)
+    X_ = tf.linalg.set_diag(X_, toset)
+    norm_facs = tf.reduce_sum(X_, axis=0, keepdims=True)
     X_ = X_ / norm_facs
     X_ = 0.5 * (X_ + tf.transpose(X_))
 
@@ -219,11 +218,11 @@ def kl_loss(
         # cur_beta_P = P_
         kl_matr = tf.multiply(
             cur_beta_P,
-            tf.log(cur_beta_P + _tf_eps) - tf.log(Q_ + _tf_eps),
+            tf.math.log(cur_beta_P + _tf_eps) - tf.math.log(Q_ + _tf_eps),
             name="kl_matr",
         )
         toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
-        kl_matr_keep = tf.matrix_set_diag(kl_matr, toset)
+        kl_matr_keep = tf.linalg.set_diag(kl_matr, toset)
         kl_total_cost_cur_beta = tf.reduce_sum(kl_matr_keep)
         kls_per_beta.append(kl_total_cost_cur_beta)
     kl_total_cost = tf.add_n(kls_per_beta)
@@ -287,7 +286,7 @@ class Parametric_tSNE(object):
         self.do_pretrain = do_pretrain
         self._loss_func = None
 
-        tf.set_random_seed(seed)
+        tf.random.set_seed(seed)
         np.random.seed(seed)
 
         # If no layers provided, use the same architecture as van der maaten 2009 paper
@@ -336,15 +335,13 @@ class Parametric_tSNE(object):
             Only use `beta_batch_size` points to calculate beta values. This is
             for speed and memory reasons. Data must be well-shuffled for this to be effective,
             betas will be calculated based on regular batches of this size
-            # TODO K-NN or something would probably be better rather than just
-            # batches
         Returns
         -------
         betas : 2D array_like (N,P)
         """
         assert (
             perplexities is not None
-        ), "Must provide desired perplexit(y/ies) if training beta values"
+        ), "Must provide desired perplexities if training beta values"
         num_pts = len(training_data)
         if not isinstance(perplexities, (list, tuple, np.ndarray)):
             perplexities = np.array([perplexities])
@@ -414,7 +411,7 @@ class Parametric_tSNE(object):
 
     def _init_loss_func(self):
         """Initialize loss function based on parameters fed to constructor
-        Necessary to do this so we can save/load the model using Keras, since
+        Necessary to do this, so we can save/load the model using Keras, since
         the loss function is a custom object"""
         kl_loss_func = functools.partial(
             kl_loss,
