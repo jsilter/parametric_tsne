@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parametric_tsne"
+version = "1.0"
+description = "Train a neural network to project data into subspace, using tSNE."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name="Jacob Silterra", email="parametric@jacobsilterra.com" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/jsilter/parametric_tsne"
+
+[tool.setuptools]
+packages = ["parametric_tSNE"]
+
+[tool.setuptools.dynamic]
+version = {attr = "package.__version__"}

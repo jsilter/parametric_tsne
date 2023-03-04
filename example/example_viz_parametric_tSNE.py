@@ -14,15 +14,8 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-
-plt.style.use("ggplot")
 from matplotlib.backends.backend_pdf import PdfPages
 
-cur_path = os.path.realpath(__file__)
-_cur_dir = os.path.dirname(cur_path)
-_par_dir = os.path.abspath(os.path.join(_cur_dir, os.pardir))
-sys.path.append(_cur_dir)
-sys.path.append(_par_dir)
 from parametric_tSNE import Parametric_tSNE
 from parametric_tSNE.utils import get_multiscale_perplexities
 
@@ -35,6 +28,8 @@ except Exception as ex:
     print("Error trying to import sklearn, will not plot PCA")
     print(ex)
     pass
+
+plt.style.use("ggplot")
 
 
 def basic_configure_logging():
