@@ -15,9 +15,9 @@ pip install -e .
 Simple example usage may be:
 
 ```python
-train_data = load_training_data_somehow()
-
 from parametric_tSNE import Parametric_tSNE
+
+train_data = load_my_training_data()
 
 high_dims = train_data.shape[1]
 num_outputs = 2
@@ -31,7 +31,7 @@ output_res = ptSNE.transform(train_data)
 At this point, `ptSNE` will be a trained model, so we can quickly transform other data:
 
 ```python
-test_data = load_test_data_somehow()
+test_data = load_my_test_data()
 test_res = ptSNE.transform(test_data)
 ```
 
@@ -41,16 +41,25 @@ If one wants to use a different network architecture, one must specify the layer
 The neural network is implemented using Keras and Tensorflow, so layers should be specified using Keras:
 
 ```python
-from tensorflow.contrib.keras import layers
-all_layers = [layers.Dense(10, input_shape=(high_dims,), activation='sigmoid', kernel_initializer='glorot_uniform'),
-layers.Dense(100, activation='sigmoid', kernel_initializer='glorot_uniform'),
-layers.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform')]
+from parametric_tSNE import Parametric_tSNE
+import tensorflow as tf
+tfkl = tf.keras.layers
+
+train_data = load_my_training_data()
+high_dims = train_data.shape[1]
+num_outputs = 2
+perplexity = 30
+
+all_layers = [tfkl.Dense(10, input_shape=(high_dims,), activation='sigmoid', kernel_initializer='glorot_uniform'),
+tfkl.Dense(100, activation='sigmoid', kernel_initializer='glorot_uniform'),
+tfkl.Dense(num_outputs, activation='relu', kernel_initializer='glorot_uniform')]
 ptSNE = Parametric_tSNE(high_dims, num_outputs, perplexity, all_layers=all_layers)
 ```
 
 The "perplexity" parameter can also be a list (e.g. [10,20,30,50,100,200]), in which case the total loss function is a sum of the loss function calculated from each perplexity. This is an ad-hoc method inspired by Verleysen et al 2014. Initialization and training step computation time will be linear in the number of perplexity values used, though it shouldn't affect the speed of the final trained model.
 
-If the dimensionality is large (>100), it is recommended that one use a simple dimensionality reduction method first. See van der Maaten's FAQ on tSNE.
+If the dimensionality is large (>100), it is recommended that one use a simple dimensionality reduction method first, such as PCA.
+See van der Maaten's FAQ on tSNE.
 
 # Footnotes
 
