@@ -18,8 +18,8 @@ import functools
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib.keras import models
-from tensorflow.contrib.keras import layers
+from tensorflow.keras import models
+from tensorflow.keras import layers
 
 from .utils import calc_betas_loop
 from .utils import get_squared_cross_diff_np
@@ -147,8 +147,8 @@ def _get_normed_sym_tf(X_, batch_size):
         symmetric probabilities, making the assumption that P(i|j) = P(j|i)
         Diagonals are all 0s."""
     toset = tf.constant(0, shape=[batch_size], dtype=X_.dtype)
-    X_ = tf.matrix_set_diag(X_, toset)
-    norm_facs = tf.reduce_sum(X_, axis=0, keep_dims=True)
+    X_ = tf.linalg.set_diag(X_, toset)
+    norm_facs = tf.reduce_sum(X_, axis=0, keepdims=True)
     X_ = X_ / norm_facs
     X_ = 0.5*(X_ + tf.transpose(X_))
     
@@ -216,12 +216,12 @@ def kl_loss(y_true, y_pred, alpha=1.0, batch_size=None, num_perplexities=None, _
         #yrange = tf.range(zz*batch_size, (zz+1)*batch_size)
         #cur_beta_P = tf.slice(P_, [zz*batch_size, [-1, batch_size])
         #cur_beta_P = P_
-        kl_matr = tf.multiply(cur_beta_P, tf.log(cur_beta_P + _tf_eps) - tf.log(Q_ + _tf_eps), name='kl_matr')
+        kl_matr = tf.math.multiply(cur_beta_P, tf.math.log(cur_beta_P + _tf_eps) - tf.math.log(Q_ + _tf_eps), name='kl_matr')
         toset = tf.constant(0, shape=[batch_size], dtype=kl_matr.dtype)
-        kl_matr_keep = tf.matrix_set_diag(kl_matr, toset)
+        kl_matr_keep = tf.linalg.set_diag(kl_matr, toset)
         kl_total_cost_cur_beta = tf.reduce_sum(kl_matr_keep)
         kls_per_beta.append(kl_total_cost_cur_beta)
-    kl_total_cost = tf.add_n(kls_per_beta)
+    kl_total_cost = tf.math.add_n(kls_per_beta)
     #kl_total_cost = kl_total_cost_cur_beta
     
     return kl_total_cost
@@ -272,7 +272,7 @@ class Parametric_tSNE(object):
         self.do_pretrain = do_pretrain
         self._loss_func = None
         
-        tf.set_random_seed(seed)
+        tf.random.set_seed(seed)
         np.random.seed(seed)
         
         # If no layers provided, use the same architecture as van der maaten 2009 paper
