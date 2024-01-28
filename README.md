@@ -2,6 +2,8 @@
 This is a python package implementing parametric t-SNE. We train a neural-network to learn a mapping by minimizing the Kullback-Leibler divergence between the Gaussian distance metric in the high-dimensional space and the Students-t distributed distance metric in the low-dimensional space. By default we use similar architecture<sup>1</sup> as van der Maaten 2009, which is a dense neural network with layers:
 [input dimension], 500, 500, 2000, [output dimension]
 
+Note: The [main](https://github.com/jsilter/parametric_tsne/tree/main) branch uses TensorFlow and the TensorFlow version of Keras. The [pytorch](https://github.com/jsilter/parametric_tsne/tree/pytorch) branch uses PyTorch and [Keras](https://keras.io/). 
+
 # Installation
 
 ```commandline
